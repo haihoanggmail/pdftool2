@@ -3740,16 +3740,24 @@ function removeVietnameseTones(str) {
 }
 
 function logAction(action) {
+    // Ghi nhận lượt thao tác ẩn danh (chỉ tên thao tác + mã ngẫu nhiên) về /api/track trên Vercel.
+    // Tôn trọng Do Not Track và công tắc localStorage 'pdftool-no-log' = '1'.
     try {
         if (localStorage.getItem('pdftool-no-log') === '1' || navigator.doNotTrack === '1') return;
     } catch (e) {}
-    fetch("https://script.google.com/macros/s/AKfycbxP1LuGZJ3qeNwa7ou-aAqFa01dX3P2uDWyRnpzb_Jec2OY0nc2OwuxFEInQNOaDnvU/exec", {
-        method: "POST",
-        mode: "no-cors",
-        body: new URLSearchParams({
-            action: action
-        })
-    }).catch(() => {});
+    try {
+        let uid = localStorage.getItem('pdftool-uid');
+        if (!uid) {
+            uid = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : (String(Math.random()).slice(2) + Date.now());
+            localStorage.setItem('pdftool-uid', uid);
+        }
+        fetch('/api/track', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: action, uid: uid }),
+            keepalive: true
+        }).catch(() => {});
+    } catch (e) {}
 }
 
 async function renderEditorPageImage(pageNum) {

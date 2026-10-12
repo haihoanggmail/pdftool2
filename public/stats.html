@@ -1,0 +1,19 @@
+<!doctype html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Thống kê PDF Tool</title><meta name="robots" content="noindex">
+<style>body{font:15px system-ui;max-width:820px;margin:30px auto;padding:0 14px}table{border-collapse:collapse;width:100%;margin:12px 0}td,th{border:1px solid #ccc;padding:5px 9px;text-align:right}th:first-child,td:first-child{text-align:left}.big{font-size:28px;font-weight:700}</style></head><body>
+<h2>📊 Thống kê PDF Tool</h2>
+<p><input id="k" type="password" placeholder="Nhập STATS_KEY"> <button id="go">Xem</button> <select id="d"><option>7</option><option selected>30</option><option>90</option></select> ngày</p>
+<div id="out"></div>
+<script>
+const $=s=>document.querySelector(s);
+async function load(){
+  const key=$('#k').value; sessionStorage.setItem('sk',key);
+  const r=await fetch('/api/stats?days='+$('#d').value,{headers:{'x-stats-key':key}}); const j=await r.json();
+  if(!j.ok){$('#out').textContent='Lỗi: '+(j.error||r.status);return}
+  const acts=Object.keys(j.totalActions).sort(); const esc=s=>String(s).replace(/[<>&]/g,'');
+  $('#out').innerHTML='<div>Người dùng duy nhất (tổng): <span class="big">'+j.totalUsers+'</span></div>'+
+   '<table><tr><th>Thao tác</th><th>Tổng</th></tr>'+acts.map(a=>'<tr><td>'+esc(a)+'</td><td>'+j.totalActions[a]+'</td></tr>').join('')+'</table>'+
+   '<table><tr><th>Ngày</th><th>Người dùng</th><th>Lượt thao tác</th></tr>'+j.daily.map(x=>'<tr><td>'+x.date+'</td><td>'+x.users+'</td><td>'+Object.values(x.actions).reduce((a,b)=>a+b,0)+'</td></tr>').join('')+'</table>';
+}
+$('#go').onclick=load; $('#k').value=sessionStorage.getItem('sk')||'';
+</script></body></html>

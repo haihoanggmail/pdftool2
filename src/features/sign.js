@@ -224,7 +224,7 @@ export async function exportSigned() {
     const out = await doc.save(), a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([out], { type: 'application/pdf' })); a.download = st.name + '-signed.pdf'; a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 4000);
-    window.toast?.('Đã xuất ' + a.download, 'success');
+    window.toast?.('Đã xuất ' + a.download, 'success'); try { window.logAction?.('sign_pdf'); } catch (e) {}
   } catch (e) { window.toast?.('Lỗi xuất PDF: ' + (e.message || e), 'error'); }
   finally { window.Progress?.hide(); }
 }

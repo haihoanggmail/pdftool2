@@ -1,6 +1,8 @@
 // Lớp UX bổ sung cho app legacy: toast, tiến trình, phím tắt, kéo thả toàn trang
 import './styles/ux.css';
 import { initSign } from './features/sign.js';
+import { initForm } from './features/form.js';
+import { initRedact } from './features/redact.js';
 
 // ---------- Toast ----------
 const toastBox = Object.assign(document.createElement('div'), { id: 'toast-box' });
@@ -27,7 +29,7 @@ window.Progress = {
 
 // ---------- Kéo thả file vào bất kỳ đâu ----------
 const activeTabId = () => document.querySelector('.tab-content.active')?.id;
-const targets = { 'tab-main': 'file-input', 'tab-merge': 'merge-input', 'tab-editor': 'editor-file-input', 'tab-word': 'w2d-input', 'tab-excel': 'w2x-input', 'tab-sign': 'sg-pdf' };
+const targets = { 'tab-main': 'file-input', 'tab-merge': 'merge-input', 'tab-editor': 'editor-file-input', 'tab-word': 'w2d-input', 'tab-excel': 'w2x-input', 'tab-sign': 'sg-pdf', 'tab-form': 'fm-pdf', 'tab-redact': 'rd-pdf' };
 const overlay = Object.assign(document.createElement('div'), { id: 'drop-overlay', textContent: '📥 Thả file PDF / ảnh vào đây' });
 document.body.appendChild(overlay);
 let depth = 0;
@@ -54,6 +56,8 @@ addEventListener('drop', (e) => {
 
 // ---------- Phím tắt ----------
 initSign();
+initForm();
+initRedact();
 const tabs = ['tab-main', 'tab-merge', 'tab-compare', 'tab-editor'];
 const help = Object.assign(document.createElement('div'), {
   id: 'shortcut-help',
