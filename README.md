@@ -21,7 +21,8 @@ Dữ liệu gửi đi: tên thao tác (`pdf_to_word`, `save_pdf`, `sign_pdf`...)
 Cài đặt trên Vercel → Project → **Settings → Environment Variables**:
 | Biến | Ý nghĩa |
 |---|---|
-| `APPS_SCRIPT_URL` | Link Web app Google Apps Script (ghi vào Google Sheet như trước) |
+| `APPS_SCRIPT_URL` | Link Web app Google Apps Script (mã nguồn mẫu: `apps-script/Code.gs`) |
+| `APPS_SCRIPT_KEY` | (Khuyên dùng) Mật khẩu chung, trùng với Script property `SECRET` trong Apps Script |
 | `KV_REST_API_URL`, `KV_REST_API_TOKEN` | (Tùy chọn) Upstash Redis, tự có khi thêm từ Storage — để xem thống kê ở `/stats.html` |
 | `STATS_KEY` | (Tùy chọn) Khóa xem `/stats.html` |
 

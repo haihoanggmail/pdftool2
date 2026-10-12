@@ -9,7 +9,9 @@ async function forwardToAppsScript(action) {
   const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 5000);
   try {
     // Apps Script trả 302 sang script.googleusercontent.com → để fetch tự theo redirect
-    await fetch(process.env.APPS_SCRIPT_URL, { method: 'POST', body: new URLSearchParams({ action }), redirect: 'follow', signal: ctl.signal });
+    const form = new URLSearchParams({ action });
+    if (process.env.APPS_SCRIPT_KEY) form.set('key', process.env.APPS_SCRIPT_KEY);   // mật khẩu chung với Apps Script (Script property SECRET)
+    await fetch(process.env.APPS_SCRIPT_URL, { method: 'POST', body: form, redirect: 'follow', signal: ctl.signal });
   } finally { clearTimeout(t); }
 }
 
