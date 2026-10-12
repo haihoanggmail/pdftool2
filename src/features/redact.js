@@ -27,6 +27,8 @@ const HTML = `
     <div class="card"><p class="card-title">3. Che thủ công</p>
       <div class="rd-hint">Kéo chuột trên trang để vẽ vùng che. Bấm vào vùng rồi bấm ✕ hoặc phím Delete để bỏ.</div>
       <button class="rd-btn" id="rd-clearpage">Bỏ hết vùng trang này</button> <button class="rd-btn" id="rd-clearall">Bỏ tất cả</button></div>
+    <div class="card"><p class="card-title">4. Lịch sử vùng che <span id="rd-hcount" class="rd-badge"></span></p>
+      <div id="rd-history" class="rd-history"><div class="rd-hint">Chưa có vùng che nào. Bấm vào một mục để nhảy tới vị trí đó.</div></div></div>
     <div class="card"><label class="rd-chk"><input type="checkbox" id="rd-meta" checked> Xóa metadata (tác giả, tiêu đề, phần mềm tạo...)</label>
       <div class="rd-warn">⚠️ Trang có vùng che sẽ thành ảnh: không còn chọn / tìm kiếm chữ được trên trang đó. Đây là cách chắc chắn xóa dữ liệu thật.</div>
       <button class="rd-btn rd-ok" id="rd-export">⬇️ Áp dụng &amp; xuất PDF</button><div class="rd-hint" id="rd-count"></div></div>
@@ -51,6 +53,34 @@ async function openPdf(file) {
 function updateCount() {
   const pages = new Set(st.rects.map((r) => r.page)).size;
   $('#rd-count').textContent = st.rects.length ? `${st.rects.length} vùng che trên ${pages} trang` : 'Chưa có vùng che nào';
+  renderHistory();
+}
+
+// ---------- Lịch sử vùng che (bấm để nhảy tới vị trí) ----------
+const mask = (t) => (t ? t.slice(0, 2) + '•••' : '');
+function renderHistory() {
+  const box = $('#rd-history'); if (!box) return;
+  $('#rd-hcount').textContent = st.rects.length ? st.rects.length : '';
+  if (!st.rects.length) { box.innerHTML = '<div class="rd-hint">Chưa có vùng che nào. Bấm vào một mục để nhảy tới vị trí đó.</div>'; return; }
+  box.innerHTML = '';
+  st.rects.forEach((r, i) => {
+    const it = document.createElement('div'); it.className = 'rd-hitem' + (st.sel === r.id ? ' on' : ''); it.dataset.id = r.id;
+    it.innerHTML = '<span class="rd-hnum"></span><span class="rd-hmain"></span><button title="Xóa vùng này">✕</button>';
+    it.querySelector('.rd-hnum').textContent = '#' + (i + 1);
+    it.querySelector('.rd-hmain').textContent = `Trang ${r.page} · ${r.label || 'Thủ công'}` + (r.snip ? ` · ${mask(r.snip)}` : '');
+    it.onclick = () => gotoRect(r.id);
+    it.querySelector('button').onclick = (e) => { e.stopPropagation(); st.rects = st.rects.filter((x) => x.id !== r.id); if (st.sel === r.id) st.sel = null; updateCount(); drawRects(); };
+    box.appendChild(it);
+  });
+}
+async function gotoRect(id) {
+  const r = st.rects.find((x) => x.id === id); if (!r) return;
+  st.sel = id;
+  if (r.page !== st.cur) { st.cur = r.page; await renderPage(); } else drawRects();
+  renderHistory();
+  const el = st.holder?.querySelector(`.rd-rect[data-id="${id}"]`); if (!el) return;
+  el.scrollIntoView({ block: 'center', inline: 'center', behavior: 'smooth' });
+  el.classList.remove('rd-flash'); void el.offsetWidth; el.classList.add('rd-flash');
 }
 
 async function renderPage() {
@@ -71,9 +101,9 @@ function drawRects() {
   const h = st.holder; if (!h) return; h.querySelectorAll('.rd-rect').forEach((n) => n.remove());
   const W = h.clientWidth, H = h.clientHeight;
   st.rects.filter((r) => r.page === st.cur).forEach((r) => {
-    const el = document.createElement('div'); el.className = 'rd-rect' + (st.sel === r.id ? ' sel' : '');
+    const el = document.createElement('div'); el.className = 'rd-rect' + (st.sel === r.id ? ' sel' : ''); el.dataset.id = r.id;
     el.style.cssText = `left:${r.x * W}px;top:${r.y * H}px;width:${r.w * W}px;height:${r.h * H}px`; el.innerHTML = '<span class="rd-x">✕</span>';
-    el.addEventListener('pointerdown', (e) => { e.stopPropagation(); if (e.target.classList.contains('rd-x')) { st.rects = st.rects.filter((x) => x.id !== r.id); st.sel = null; updateCount(); } else st.sel = r.id; drawRects(); });
+    el.addEventListener('pointerdown', (e) => { e.stopPropagation(); if (e.target.classList.contains('rd-x')) { st.rects = st.rects.filter((x) => x.id !== r.id); st.sel = null; updateCount(); } else st.sel = r.id; drawRects(); renderHistory(); document.querySelector(`#rd-history .rd-hitem[data-id="${r.id}"]`)?.scrollIntoView({ block: 'nearest' }); });
     h.appendChild(el);
   });
 }
@@ -90,7 +120,7 @@ function attachDraw(holder) {
   const end = (e) => {
     if (!start) return; const b = holder.getBoundingClientRect(), x = Math.max(0, Math.min(b.width, e.clientX - b.left)), y = Math.max(0, Math.min(b.height, e.clientY - b.top));
     const w = Math.abs(x - start.x), h = Math.abs(y - start.y); prev.remove(); const s = start; start = prev = null;
-    if (w > 4 && h > 4) { st.rects.push({ id: uid++, page: st.cur, x: Math.min(s.x, x) / b.width, y: Math.min(s.y, y) / b.height, w: w / b.width, h: h / b.height }); updateCount(); }
+    if (w > 4 && h > 4) { st.rects.push({ id: uid++, page: st.cur, label: 'Thủ công', x: Math.min(s.x, x) / b.width, y: Math.min(s.y, y) / b.height, w: w / b.width, h: h / b.height }); updateCount(); }
     drawRects();
   };
   holder.addEventListener('pointerup', end); holder.addEventListener('pointercancel', end);
@@ -99,10 +129,10 @@ function attachDraw(holder) {
 // ---------- Tự tìm ----------
 function buildMatchers() {
   const list = [];
-  document.querySelectorAll('#rd-presets input:checked').forEach((c) => list.push(new RegExp(PRESETS[c.value].re.source, 'g')));
+  document.querySelectorAll('#rd-presets input:checked').forEach((c) => { const r = new RegExp(PRESETS[c.value].re.source, 'g'); r._label = PRESETS[c.value].label.split(' (')[0]; list.push(r); });
   ($('#rd-custom').value || '').split(';').map((s) => s.trim()).filter(Boolean).forEach((t) => {
     const m = t.match(/^\/(.+)\/([gimsu]*)$/);
-    try { list.push(m ? new RegExp(m[1], [...new Set((m[2] || '') + 'g')].join('')) : new RegExp(t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi')); }
+    try { const r = m ? new RegExp(m[1], [...new Set((m[2] || '') + 'g')].join('')) : new RegExp(t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'); r._label = 'Từ khóa'; list.push(r); }
     catch (e) { toast('Regex không hợp lệ: ' + t, 'error'); }
   });
   return list;
@@ -116,19 +146,25 @@ async function findAll() {
       window.Progress?.show('Đang tìm thông tin...', (n - 1) / st.pages * 100);
       const page = await st.pdf.getPage(n), vp = page.getViewport({ scale: 1 }), tc = await page.getTextContent();
       let text = ''; const map = [];                       // map[i] = {item, offset} cho ký tự thứ i
-      for (const it of tc.items) { if (!it.str) continue; for (let k = 0; k < it.str.length; k++) map.push({ it, k }); text += it.str; }
+      let prev = null;
+      for (const it of tc.items) {
+        if (!it.str) continue;
+        // Chèn xuống dòng giữa hai dòng chữ khác nhau để kết quả không dính sang dòng kế (vd: "...hachihi.vn" + "Phone")
+        if (prev && (prev.hasEOL || Math.abs(prev.transform[5] - it.transform[5]) > 2)) { text += '\n'; map.push(null); }
+        for (let k = 0; k < it.str.length; k++) map.push({ it, k }); text += it.str; prev = it;
+      }
       for (const re of res) {
         re.lastIndex = 0; let m;
         while ((m = re.exec(text))) {
           if (!m[0]) { re.lastIndex++; continue; }
           const byItem = new Map();
-          for (let i = m.index; i < m.index + m[0].length; i++) { const { it, k } = map[i]; const o = byItem.get(it) || { a: k, b: k }; o.b = k; byItem.set(it, o); }
+          for (let i = m.index; i < m.index + m[0].length; i++) { if (!map[i]) continue; const { it, k } = map[i]; const o = byItem.get(it) || { a: k, b: k }; o.b = k; byItem.set(it, o); }
           for (const [it, o] of byItem) {
             const len = it.str.length, [, , , d, e, f] = it.transform, hgt = Math.abs(it.height || d) || 10;
             const x0 = e + it.width * o.a / len, x1 = e + it.width * (o.b + 1) / len;
             const p1 = vp.convertToViewportPoint(x0, f - hgt * 0.22), p2 = vp.convertToViewportPoint(x1, f + hgt * 0.95);
             const px = Math.min(p1[0], p2[0]), py = Math.min(p1[1], p2[1]), pw = Math.abs(p2[0] - p1[0]), ph = Math.abs(p2[1] - p1[1]);
-            st.rects.push({ id: uid++, page: n, x: Math.max(0, px - 1.5) / vp.width, y: Math.max(0, py - 1.5) / vp.height, w: (pw + 3) / vp.width, h: (ph + 3) / vp.height }); added++;
+            st.rects.push({ id: uid++, page: n, label: re._label, snip: m[0], x: Math.max(0, px - 1.5) / vp.width, y: Math.max(0, py - 1.5) / vp.height, w: (pw + 3) / vp.width, h: (ph + 3) / vp.height }); added++;
           }
         }
       }

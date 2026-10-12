@@ -14,13 +14,20 @@ npm run build    # xuất ra thư mục dist
 - **Render**: New → Blueprint, chọn repo (đọc `render.yaml`, dạng Static Site). Hoặc tạo Static Site thủ công: Build `npm ci && npm run build`, Publish `dist`.
 - **GitHub Pages**: build rồi đẩy nội dung `dist` lên nhánh gh-pages (đã dùng `base: './'` nên chạy được ở thư mục con).
 
-## Thống kê lượt dùng (thay cho Google Apps Script)
-Hàm `api/track.js` ghi nhận thao tác ẩn danh (tên thao tác + mã ngẫu nhiên trong trình duyệt) vào Upstash Redis; `api/stats.js` + trang `/stats.html` để xem.
-Cài đặt trên Vercel:
-1. Project → **Storage** → thêm **Upstash Redis** (Marketplace) → Vercel tự tạo `KV_REST_API_URL`, `KV_REST_API_TOKEN`.
-2. Project → **Settings → Environment Variables** → thêm `STATS_KEY` (chuỗi dài, tự đặt).
-3. Redeploy, rồi mở `https://<domain>/stats.html` và nhập `STATS_KEY`.
-Chưa đặt biến → app vẫn chạy bình thường, chỉ không ghi thống kê. Người dùng có thể tắt bằng Do Not Track hoặc `localStorage['pdftool-no-log']='1'`. Trên Render/GitHub Pages không có `/api` nên thống kê bị bỏ qua êm.
+## Thống kê lượt dùng (giấu link Apps Script ở biến Vercel)
+Trình duyệt chỉ gọi `/api/track` (hàm `api/track.js` chạy trên Vercel). Hàm này đọc **biến môi trường** và chuyển tiếp, nên link Apps Script không xuất hiện trong mã nguồn hay trình duyệt.
+Dữ liệu gửi đi: tên thao tác (`pdf_to_word`, `save_pdf`, `sign_pdf`...) — sang Apps Script chỉ có `action` như bản cũ.
+
+Cài đặt trên Vercel → Project → **Settings → Environment Variables**:
+| Biến | Ý nghĩa |
+|---|---|
+| `APPS_SCRIPT_URL` | Link Web app Google Apps Script (ghi vào Google Sheet như trước) |
+| `KV_REST_API_URL`, `KV_REST_API_TOKEN` | (Tùy chọn) Upstash Redis, tự có khi thêm từ Storage — để xem thống kê ở `/stats.html` |
+| `STATS_KEY` | (Tùy chọn) Khóa xem `/stats.html` |
+
+Sau khi thêm/sửa biến phải **Redeploy** thì mới có hiệu lực. Chưa đặt biến nào thì app vẫn chạy bình thường. Người dùng có thể tắt bằng Do Not Track hoặc `localStorage['pdftool-no-log']='1'`. Trên Render/GitHub Pages không có `/api` nên thống kê bị bỏ qua êm.
+
+> Link Apps Script cũ từng nằm trong mã nguồn công khai → nên **tạo bản triển khai (deployment) mới** trong Apps Script để có link mới, bỏ link cũ.
 
 ## Cấu trúc
 - `index.html` – khung giao diện (HTML thuần).

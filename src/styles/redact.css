@@ -15,3 +15,12 @@
 .rd-x{position:absolute;top:-9px;right:-9px;width:18px;height:18px;border-radius:50%;background:var(--danger,#dc2626);color:#fff;font-size:10px;line-height:18px;text-align:center;cursor:pointer;display:none}
 .rd-rect.sel .rd-x,.rd-rect:hover .rd-x{display:block}
 @media(max-width:900px){.rd-wrap{flex-direction:column}.rd-left,.rd-right{width:100%}}
+
+.rd-badge{display:inline-block;min-width:18px;padding:0 6px;border-radius:9px;background:var(--primary,#0078d4);color:#fff;font-size:12px;text-align:center}
+.rd-history{max-height:240px;overflow:auto;display:flex;flex-direction:column;gap:4px}
+.rd-hitem{display:flex;align-items:center;gap:8px;padding:5px 8px;border:1px solid rgba(128,128,128,.35);border-radius:6px;cursor:pointer;font-size:13px}
+.rd-hitem:hover{border-color:var(--primary,#0078d4)}.rd-hitem.on{background:rgba(0,120,212,.15);border-color:var(--primary,#0078d4)}
+.rd-hnum{opacity:.6;min-width:26px}.rd-hmain{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rd-hitem button{border:0;background:transparent;color:var(--danger,#dc2626);cursor:pointer;font-size:12px}
+.rd-flash{animation:rdflash 1.4s ease-out 1}
+@keyframes rdflash{0%,40%{outline:4px solid #f59e0b;box-shadow:0 0 0 8px rgba(245,158,11,.5)}100%{outline:1px solid #f59e0b;box-shadow:none}}
