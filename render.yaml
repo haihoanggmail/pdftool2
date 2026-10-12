@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: hachihi-pdf-tool
+    runtime: static
+    buildCommand: npm ci && npm run build
+    staticPublishPath: dist
+    headers:
+      - path: /sw.js
+        name: Cache-Control
+        value: no-cache

@@ -1,0 +1,870 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script>
+(function() {
+    var t = null;
+    try {
+        t = localStorage.getItem('pdftool-theme');
+    } catch (e) {}
+    if (!t) t = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    document.documentElement.setAttribute('data-theme', t);
+})();
+</script>
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="icon" type="image/png" href="icon-192.png">
+    <link rel="apple-touch-icon" href="icon-192.png">
+    <meta name="theme-color" content="#0078d4">
+    <title>PDF tool by hachihi.vn - 0933842126, support by: Hải Hoàng 09-1800-1944</title>
+    
+    
+    <link rel="stylesheet" href="./src/styles/legacy.css">
+</head>
+<body>
+
+    <div class="nav-tabs">
+        <button class="tab-btn active" onclick="switchTab('tab-main', this)">↻ Xoay & Sắp Xếp</button>
+        <button class="tab-btn" onclick="switchTab('tab-merge', this)">🗂️ Gộp File</button>
+        <button class="tab-btn" onclick="switchTab('tab-compare', this)">⚖️ Chế độ So Sánh</button>
+        <button class="tab-btn" onclick="switchTab('tab-editor', this)">✏️ Chỉnh Sửa PDF</button>
+        <button class="tab-btn has-menu" id="nav-convert" onclick="toggleMenu('menu-convert', this)">🔄 Chuyển đổi</button>
+        <button class="tab-btn has-menu" id="nav-tools" onclick="toggleMenu('menu-tools', this)">🧰 Công cụ PDF</button>
+        <button class="tab-btn" onclick="switchTab('tab-about', this)">ℹ️ Giới Thiệu</button>
+        <button class="theme-toggle" id="theme-toggle" onclick="toggleTheme()" title="Chuyển chế độ Sáng / Tối" aria-label="Chuyển chế độ Sáng / Tối">🌙 Chế độ tối</button>
+        <button class="theme-toggle" id="clear-session-btn" style="margin-left:8px;" onclick="clearSavedSession()" title="Xóa file và thao tác đã được lưu tự động trong trình duyệt">🗑️ Xóa dữ liệu đã lưu</button>
+    </div>
+
+    <div class="nav-menu" id="menu-convert" data-owner="nav-convert">
+        <button class="menu-item" onclick="switchTab('tab-word', this)">📝 PDF → Word</button>
+        <button class="menu-item" onclick="switchTab('tab-excel', this)">📊 PDF → Excel</button>
+        <button class="menu-item" onclick="switchTab('tab-tools', this); toolsSelect('pdf2img')">🖼️ PDF → Ảnh</button>
+        <button class="menu-item" onclick="switchTab('tab-tools', this); toolsSelect('img2pdf')">📄 Ảnh → PDF</button>
+        <button class="menu-item" onclick="switchTab('tab-tools', this); toolsSelect('ocr')">🔍 OCR: PDF scan → PDF tìm kiếm được</button>
+    </div>
+    <div class="nav-menu" id="menu-tools" data-owner="nav-tools">
+        <div class="menu-sep">Trang &amp; file</div>
+        <button class="menu-item" onclick="switchTab('tab-tools', this); toolsSelect('split')">✂️ Tách file</button>
+        <button class="menu-item" onclick="switchTab('tab-tools', this); toolsSelect('compress')">🗜️ Nén PDF</button>
+        <button class="menu-item" onclick="switchTab('tab-tools', this); toolsSelect('blank')">🧽 Loại bỏ trang trắng</button>
+        <div class="menu-sep">Bảo mật</div>
+        <button class="menu-item" onclick="switchTab('tab-tools', this); toolsSelect('protect')">🔒 Đặt / gỡ mật khẩu</button>
+        <button class="menu-item" onclick="switchTab('tab-tools', this); toolsSelect('meta')">🧹 Xóa / sửa metadata</button>
+        <div class="menu-sep">Đánh dấu</div>
+        <button class="menu-item" onclick="switchTab('tab-tools', this); toolsSelect('watermark')">💧 Chèn watermark</button>
+        <button class="menu-item" onclick="switchTab('tab-tools', this); toolsSelect('pagenum')">🔢 Đánh số trang</button>
+        <button class="menu-item" onclick="switchTab('tab-tools', this); toolsSelect('bookmark')">🔖 Tạo mục lục (bookmark)</button>
+    </div>
+
+    <div id="tab-main" class="tab-content active">
+        <div class="main-container">
+            <div class="left-panel">
+                <div class="card">
+                    <p class="card-title">1. Chọn Tài Liệu</p>
+                    <input type="file" id="file-input" accept="application/pdf,image/*" style="display:none" onchange="loadPDF(this)">
+                    <button class="btn" onclick="document.getElementById('file-input').click()">📁 Mở file PDF / Ảnh</button>
+                    <div id="file-status" style="font-size:12px; color:gray; word-break:break-all; margin-top:5px;">Chưa chọn file.</div>
+                </div>
+
+                <div class="card">
+                    <p class="card-title">✨ CẤU HÌNH WATERMARK</p>
+                    <label style="font-size: 12px; font-weight: bold; display: flex; align-items: center; gap: 6px; margin-bottom: 8px; cursor: pointer; color: var(--success);">
+                        <input type="checkbox" id="wm-enable" onchange="toggleWatermarkMockup()"> Kích hoạt Đóng Dấu Bản Quyền
+                    </label>
+                    
+					<div id="wm-settings-block" style="display: none; transition: opacity 0.2s;">
+                        <div style="margin-bottom: 8px;">
+                            <input type="text" id="wm-text" value="HACHIHI.VN" placeholder="Nhập nội dung..." oninput="updateWatermarkStyles()">
+                        </div>
+
+                        <div class="inline-group">
+                            <div>
+                                <label>Cỡ chữ (px)</label>
+                                <input type="number" id="wm-size" value="24" min="10" max="100" oninput="updateWatermarkStyles()">
+                            </div>
+                            <div>
+                                <label>Màu sắc</label>
+                                <input type="color" id="wm-color" value="#ff0000" style="width:100%; height:32px; padding:0; border:1px solid #cbd5e1; border-radius:4px; cursor:pointer;" onchange="updateWatermarkStyles()">
+                            </div>
+                        </div>
+
+                        <div class="inline-group">
+                            <div>
+                                <label>Góc xoay (°)</label>
+                                <input type="number" id="wm-rotation" value="-30" min="-360" max="360" oninput="updateWatermarkStyles()">
+                            </div>
+                            <div>
+                                <label>Độ mờ (0.1 - 1)</label>
+                                <input type="number" id="wm-opacity" value="0.4" min="0.1" max="1" step="0.1" oninput="updateWatermarkStyles()">
+                            </div>
+                        </div>
+
+                        <div class="inline-group" style="margin-top:5px;">
+                            <label style="font-size:12px; cursor:pointer; display:flex; align-items:center; gap:4px;">
+                                <input type="checkbox" id="wm-bold" onchange="updateWatermarkStyles()"> Đậm (Bold)
+                            </label>
+                            <label style="font-size:12px; cursor:pointer; display:flex; align-items:center; gap:4px;">
+                                <input type="checkbox" id="wm-italic" onchange="updateWatermarkStyles()"> Nghiêng (Italic)
+                            </label>
+                        </div>
+                        <p style="font-size:11px; color:#c00; margin: 6px 0 0 0; font-style:italic; line-height:1.3;">💡 Mẹo: Rê chuột vào chữ mờ trên khung hình bên phải để kéo thả định vị vị trí!</p>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <p class="card-title">2. Chọn trang thao tác</p>
+                    <input type="text" id="pages-input" placeholder="ví dụ: 3 hoặc 1-5 hoặc 3,5,8">
+                </div>
+
+                <div class="card">
+                    <p class="card-title">3. Thao tác trang</p>
+                    <button class="btn" onclick="rotate(90)">Xoay Phải 90° ↻</button>
+                    <button class="btn" onclick="rotate(-90)">Xoay Trái 90° ↺</button>
+                    <button class="btn btn-warning" onclick="mirrorPages()">↔️ Lật Gương (Mirror)</button>
+                    <button class="btn" id="undo-btn" onclick="undo()" style="margin-top:5px; background-color:#605e5c" disabled>↩ Hoàn tác sắp xếp</button>
+                </div>
+
+                <div class="card" style="margin-top: auto;">
+                    <p class="card-title">4. Xuất bản</p>
+                    <button class="btn btn-success" onclick="savePDF()">💾 LƯU FILE MỚI</button>
+                </div>
+            </div>
+            
+            <div class="right-panel">
+                <div class="preview-header">
+                    <span style="font-weight: bold; color: var(--primary); display: inline-flex; align-items: center; gap: 8px;">
+                        <h1 style="color: var(--primary); margin:0; font-size:16px; display: inline-flex; align-items: center; gap: 10px;">
+                            <img src="logo.png" alt="Logo" style="height: 20px; width: auto;" onerror="this.style.display='none'">
+                            <span>PDF Tool- By Hachihi.vn</span>
+                        </h1>
+                    </span>
+                    <div style="display:flex; align-items:center; gap:10px;">
+                        <span style="font-size: 13px;">Chế độ xem:</span>
+                        <select id="view-mode" onchange="updateViewMode()" style="width:140px;">
+                            <option value="1" selected>1 trang</option>
+                            <option value="2">2 trang cùng lúc</option>
+                            <option value="4">4 trang cùng lúc</option>
+                            <option value="all">Tất cả các trang</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="grid-container" id="grid-container">
+                    <div style="color:gray; font-style:italic; grid-column: 1/-1; text-align:center; padding-top:40px;">
+                        Vui lòng mở file PDF để kích hoạt tính năng chỉnh sửa và đóng dấu.
+                    </div>
+                </div>
+                <div class="pagination-container" id="pagination-ctrl">
+                    <button class="page-nav-btn" id="prev-page-btn" onclick="changePageOffset(-1)">◀ Trước</button>
+                    <span class="page-indicator" id="page-indicator-text">Đang xem: 0 - 0 / 0</span>
+                    <button class="page-nav-btn" id="next-page-btn" onclick="changePageOffset(1)">Sau ▶</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="tab-merge" class="tab-content">
+        <div class="main-container">
+            <div class="left-panel">
+                <div class="card">
+                    <p class="card-title">1. Tải Lên Các File</p>
+                    <input type="file" id="merge-input" accept="application/pdf,image/*" multiple style="display:none" onchange="addMergeFiles(this)">
+                    <button class="btn" onclick="document.getElementById('merge-input').click()">➕ Chọn các file PDF / Ảnh</button>
+                </div>
+                <div class="card merge-list-card">
+                    <div class="merge-list-head">
+                        <p class="card-title">Danh sách file đợi gộp</p>
+                        <button class="btn btn-danger btn-small" onclick="clearMergeList()">🧹 Xóa hết</button>
+                    </div>
+                    <div class="file-list" id="file-list-container">
+                        <div style="color:gray; font-style:italic; text-align:center; padding-top:40px;">Chưa chọn tệp tin nào.</div>
+                    </div>
+                </div>
+                <div class="card">
+                    <p class="card-title">2. Tiến Hành Gộp</p>
+                    <button class="btn btn-success" id="merge-submit-btn" onclick="generateMergedPDF()" disabled>🧱 GỘP & TẢI FILE MỚI</button>
+                </div>
+            </div>
+            <div class="right-panel">
+                <div class="preview-header">
+                    <span class="merge-preview-title" id="merge-preview-title">XEM TRƯỚC</span>
+                    <div class="merge-preview-nav">
+                        <button class="btn btn-small" id="merge-prev-btn" onclick="changeMergePreviewPage(-1)" disabled>◀ Trước</button>
+                        <span id="merge-page-indicator">0 / 0</span>
+                        <button class="btn btn-small" id="merge-next-btn" onclick="changeMergePreviewPage(1)" disabled>Sau ▶</button>
+                    </div>
+                </div>
+                <div class="merge-preview-area" id="merge-preview-area">
+                    <canvas id="merge-preview-canvas"></canvas>
+                    <div class="merge-preview-empty" id="merge-preview-empty">Nhấn vào một file ở danh sách bên trái để xem trước.</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="tab-compare" class="tab-content">
+        <div class="main-container">
+            <div class="left-panel">
+                <div class="card">
+                    <p class="card-title">1. Tải Lên 2 File Đối Chiếu</p>
+                    <input type="file" id="compare-file-1" accept="application/pdf,image/*" style="display:none" onchange="loadCompareFile(this, 1)">
+                    <button class="btn" onclick="document.getElementById('compare-file-1').click()">📄 Chọn File Gốc (A)</button>
+                    <div id="compare-status-1" style="font-size:12px; color:gray; margin-bottom:15px; word-break:break-all;">Chưa chọn File A</div>
+
+                    <input type="file" id="compare-file-2" accept="application/pdf,image/*" style="display:none" onchange="loadCompareFile(this, 2)">
+                    <button class="btn btn-warning" onclick="document.getElementById('compare-file-2').click()">📄 Chọn File Chỉnh Sửa (B)</button>
+                    <div id="compare-status-2" style="font-size:12px; color:gray; word-break:break-all;">Chưa chọn File B</div>
+                </div>
+
+                <div class="card">
+                    <p class="card-title">2. Phương thức xem</p>
+                    <label id="sync-scroll-label" style="font-size: 14px; display: flex; align-items: center; gap: 8px; cursor: pointer; margin-bottom: 15px;">
+                        <input type="checkbox" id="sync-scroll" checked> Cuộn đồng bộ 2 bên
+                    </label>
+                    <label style="font-size: 14px; display: flex; align-items: center; gap: 8px; cursor: pointer; color: var(--danger); font-weight: bold;">
+                        <input type="checkbox" id="overlay-mode" onchange="toggleOverlayMode()"> Sếp chồng lên nhau
+                    </label>
+                    
+                    <div class="visibility-controls" id="visibility-controls-group">
+                        <p style="font-size:11px; color:#555; margin:0 0 5px 0; font-style:italic;">Chọn file muốn hiển thị:</p>
+                        <div class="radio-group">
+                            <label class="radio-label"><input type="radio" name="view-filter" value="only-A" onchange="applyViewFilter(this.value)"> 🟢 Chỉ hiện File Gốc (A)</label>
+                            <label class="radio-label"><input type="radio" name="view-filter" value="only-B" onchange="applyViewFilter(this.value)"> 🟡 Chỉ hiện File Sửa (B)</label>
+                            <label class="radio-label"><input type="radio" name="view-filter" value="both" checked onchange="applyViewFilter(this.value)"> 🔵 Hiện Cả Hai (Trộn mờ)</label>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <p class="card-title">3. Tự động phát hiện khác biệt</p>
+                    <label style="font-size: 13px; display: flex; align-items: center; gap: 8px; cursor: pointer; margin-bottom: 6px;">
+                        <input type="checkbox" id="cmp-auto" checked onchange="cmpToggleAuto()"> Tô màu các điểm khác biệt
+                    </label>
+                    <div id="cmp-global" class="editor-hint" style="margin:0 0 6px;">Chọn đủ File A và File B để tự động phát hiện khác biệt.</div>
+                    <div style="display:flex; gap:6px; margin-bottom:6px;">
+                        <button class="btn btn-small" style="flex:1" onclick="cmpNavDiff(-1)">◀ Khác biệt trước</button>
+                        <button class="btn btn-small" style="flex:1" onclick="cmpNavDiff(1)">Khác biệt sau ▶</button>
+                    </div>
+                    <div class="cmp-legend">
+                        <span><i style="background:#22c55e"></i>Thêm</span><span><i style="background:#ef4444"></i>Xóa</span><span><i style="background:#f59e0b"></i>Sửa</span><span><i style="background:#a855f7"></i>Di chuyển</span><span><i style="background:#3b82f6"></i>Cỡ chữ</span><span><i style="background:#06b6d4"></i>Hình/đồ họa</span>
+                    </div>
+                    <div id="cmp-pairinfo" class="editor-hint" style="margin:6px 0 2px; font-weight:600;"></div>
+                    <div id="cmp-list" style="max-height:260px; overflow-y:auto;"></div>
+                </div>
+
+                <div class="card" style="margin-top: auto;">
+                    <p class="card-title">4. Điều hướng trang</p>
+                    <div style="display:flex; justify-content: space-between; align-items: center; gap:10px;">
+                        <button class="btn btn-small" onclick="changeComparePage(-1)" style="flex:1">◀ Trước</button>
+                        <span id="compare-page-indicator" style="font-weight:bold; font-size:14px; width: 60px; text-align: center;">0 / 0</span>
+                        <button class="btn btn-small" onclick="changeComparePage(1)" style="flex:1">Sau ▶</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="right-panel" style="position: relative;">
+                <div class="preview-header">
+                    <span style="font-weight: bold; color: var(--primary);">KHUNG ĐỐI CHIẾU THÔNG MINH</span>
+                </div>
+                <div class="compare-view" id="compare-view-container" style="height: 100%;">
+                    <div id="compare-pane-1" class="compare-pane" onscroll="handleSyncScroll(1)">
+                        <div style="color:gray; font-style:italic; margin-top:40px;">Đang chờ File A...</div>
+                    </div>
+                    <div id="compare-pane-2" class="compare-pane" onscroll="handleSyncScroll(2)">
+                        <div style="color:gray; font-style:italic; margin-top:40px;">Đang chờ File B...</div>
+                    </div>
+                    <div id="compare-overlay-container" class="overlay-container">
+                        <div class="overlay-wrapper" id="overlay-wrapper-content"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="tab-editor" class="tab-content">
+        <div class="editor-layout">
+            <div class="editor-sidebar">
+                <div class="card">
+                    <p class="card-title">1. Mở tài liệu sửa chữ</p>
+                    <input type="file" id="editor-file-input" accept="application/pdf" style="display:none" onchange="editorLoadFile(this)">
+                    <button class="btn" onclick="document.getElementById('editor-file-input').click()">📁 Mở File PDF</button>
+                    <div id="editor-file-status" style="font-size:12px;color:gray;word-break:break-all">Chưa chọn file.</div>
+                </div>
+
+                <div class="card">
+                    <p class="card-title">🎨 CÔNG CỤ VẼ & SỬA</p>
+                    <div class="draw-tools-grid">
+                        <button class="btn btn-small btn-tool active" id="tool-text" onclick="setEditorTool('text')">🔤 Chọn Chữ</button>
+                        <button class="btn btn-small region-tool-btn" id="region-mode-btn" aria-pressed="false" title="Kéo chuột quanh vùng cần chọn, rồi kéo để di chuyển cả vùng">▣ Chọn Vùng</button>
+                        <button class="btn btn-small btn-tool" id="tool-addtext" onclick="setEditorTool('addtext')">🅣 Thêm Chữ</button>
+                        <button class="btn btn-small btn-tool" id="tool-free" onclick="setEditorTool('free')">✏️ Vẽ Tự Do</button>
+                        <button class="btn btn-small btn-tool" id="tool-line" onclick="setEditorTool('line')">📏 Đường Thẳng</button>
+                        <button class="btn btn-small btn-tool" id="tool-rect" onclick="setEditorTool('rect')">⬜ Hình Vuông</button>
+                        <button class="btn btn-small btn-tool" id="tool-ellipse" onclick="setEditorTool('ellipse')">⭕ Hình Elip</button>
+                        <button class="btn btn-small btn-tool" id="tool-arrow" onclick="setEditorTool('arrow')">➡️ Mũi Tên</button>
+                    </div>
+                    <div class="region-status" id="region-status" style="margin:0 0 8px;">Chưa chọn đối tượng</div>
+                    <div style="margin-bottom:8px;">
+                        <label style="font-size:11px; font-weight:600; color:#555;">Màu nét vẽ:</label>
+                        <input type="color" id="editor-stroke-color" value="#ff0000" style="width:100%; height:32px; padding:0; border:1px solid #cbd5e1; border-radius:4px; cursor:pointer;" onchange="updateBrushPreview()">
+                    </div>
+                    <div style="margin-bottom:8px;">
+                        <label style="font-size:11px; font-weight:600; color:#555;">Màu chữ (khi sửa chữ):</label>
+                        <input type="color" id="editor-text-color" value="#000000" style="width:100%; height:32px; padding:0; border:1px solid #cbd5e1; border-radius:4px; cursor:pointer;">
+                        <p class="editor-hint">Click đúp vào chữ → chọn màu ở đây → nhấn <b>Enter</b> để lưu. Mặc định lấy đúng màu chữ gốc.</p>
+                    </div>
+                    <div style="margin-bottom:8px;">
+                        <label style="font-size:11px; font-weight:600; color:#555;">Cỡ chữ (pt):</label>
+                        <input type="number" id="editor-text-size" min="4" max="200" step="0.5" value="12">
+                    </div>
+                    <div style="margin-bottom:8px;">
+                        <label style="font-size:11px; font-weight:600; color:#555;">Font chữ:</label>
+                        <select id="editor-text-font" style="width:100%; height:32px; border:1px solid #cbd5e1; border-radius:4px; padding:0 6px; background:#fff;"></select>
+                        <button class="btn btn-small btn-tool" id="editor-local-font-btn" style="margin-top:6px; width:100%;" onclick="loadLocalFontList()">🔍 Nạp font có sẵn trong máy</button>
+                        <p class="editor-hint">Đang sửa/thêm chữ: chọn font ở đây để đổi ngay. Khi chưa chọn chữ nào, font này là mặc định cho chữ thêm mới. 6 font đầu đã nhúng sẵn (hỗ trợ tiếng Việt). Font trong máy chỉ đúng khi font đó có đủ dấu tiếng Việt và cần Chrome/Edge.</p>
+                    </div>
+                    <div class="editor-hint" id="editor-img-status" style="margin:2px 0 6px;"></div>
+                    <div class="brush-status" id="brush-size-status">Độ dày nét: 3px (Cuộn chuột để thay đổi)</div>
+                </div>
+
+                <div class="card">
+                    <p class="card-title">✏️ PHÍM TẮT & HƯỚNG DẪN</p>
+                    <p class="editor-hint" style="font-size:12.5px; color:#333; line-height: 1.5;">
+                        • <b>Sửa & Định dạng Chữ:</b><br>
+                        - Click đúp chữ để sửa.<br>
+                        - Nhấn <b>Ctrl + B</b> để in đậm chữ.<br>
+                        - Nhấn <b>Ctrl + I</b> để in nghiêng chữ.<br>
+                        • <b>Thêm chữ mới:</b><br>
+                        - Chọn <b>🅣 Thêm Chữ</b>, click vào trang, gõ chữ rồi nhấn <b>Enter</b> (dùng màu & cỡ chữ đang chọn bên trên).<br>
+                        - Click đúp để sửa, kéo để dời; xóa hết chữ để bỏ.<br>
+                        • <b>Hoàn tác / Làm lại:</b><br>
+                        - <b>Ctrl + Z</b> hoàn tác từng thao tác (chữ, ảnh, hình vẽ); <b>Ctrl + Y</b> (hoặc Ctrl + Shift + Z) làm lại.<br>
+                        • <b>Phóng to / thu nhỏ:</b> nút ➖ ➕ ở thanh dưới hoặc <b>Ctrl + cuộn chuột</b>.<br>
+                        • <b>Giữ Shift</b> khi kéo: hình vuông/tròn đều, đường thẳng/mũi tên theo góc 45°.<br>
+                        • <b>Cọ Vẽ:</b> Cuộn chuột trên trang để tăng/giảm nét vẽ nhanh chóng.
+                    </p>
+                </div>
+
+                <div class="card" style="margin-top:auto">
+                    <p class="card-title">2. Xuất PDF</p>
+                    <button class="btn btn-success" id="editor-download-btn" onclick="editorExportPDF()" disabled>💾 XUẤT FILE ĐÃ SỬA</button>
+                    <div class="editor-hint" style="text-align:center; margin-top:4px;">Phiên bản: v5 · 07/10/2026</div>
+                </div>
+            </div>
+
+            <div class="editor-main">
+			<div class="editor-pagebar" style="position: sticky; bottom: 0; z-index: 100; background: white; box-shadow: 0 -2px 10px rgba(0,0,0,0.05); width: 100%; box-sizing: border-box;">
+                    <button class="btn btn-small" onclick="editorChangePage(-1)">◀ Trước</button>
+                    <span id="editor-page-indicator" style="font-weight:bold">0 / 0</span>
+                    <button class="btn btn-small" onclick="editorChangePage(1)">Sau ▶</button>
+                    <button class="btn btn-small btn-tool" id="editor-undo-btn" onclick="editorUndo()" title="Ctrl + Z" disabled>↩ Hoàn tác</button>
+                    <button class="btn btn-small btn-tool" id="editor-redo-btn" onclick="editorRedo()" title="Ctrl + Y" disabled>↪ Làm lại</button>
+                    <button class="btn btn-small btn-tool" onclick="editorZoomBy(-1)" title="Thu nhỏ">➖</button>
+                    <span id="editor-zoom-label" style="font-weight:bold; min-width:44px; text-align:center;">100%</span>
+                    <button class="btn btn-small btn-tool" onclick="editorZoomBy(1)" title="Phóng to">➕</button>
+                    <button class="btn btn-small btn-tool" onclick="editorZoomFit()" title="Vừa chiều ngang khung">↔ Vừa khung</button>
+					<button class="btn btn-small btn-warning" onclick="editorExportPDF()" style="margin-left: 15px;">🖨️ Xuất file Pdf</button>
+                    <button class="btn btn-small btn-warning" onclick="printEditorStage()" style="margin-left: 15px;">🖨️ IN TRANG NÀY</button>
+                </div>
+				
+                <div class="editor-stage-scroll">
+                    <div id="editor-empty" style="color:#666;margin-top:60px">Mở PDF để bắt đầu chỉnh sửa văn bản trực tiếp.</div>
+                    <div id="editor-page-shell" class="editor-container-shell" style="display:none">
+                        <canvas id="editor-pdf-canvas"></canvas>
+                        <canvas id="editor-draw-canvas"></canvas>
+                        <div id="editor-text-layer" class="editor-text-layer"></div>
+                        <div id="editor-region-selection" class="editor-region-selection" aria-hidden="true"></div>
+                    </div>
+                </div>
+
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="tab-word" class="tab-content">
+        <div class="main-container">
+            <div class="left-panel">
+                <div class="card">
+                    <p class="card-title">1. Chọn file PDF</p>
+                    <input type="file" id="w2d-input" accept="application/pdf" multiple style="display:none">
+                    <button class="btn" onclick="document.getElementById('w2d-input').click()">➕ Chọn một hoặc nhiều file PDF</button>
+                    <p class="editor-hint" style="margin-top:2px;">Hoặc kéo thả file PDF vào khung bên phải. Chuyển đổi ngay trên máy bạn, file không bị gửi đi đâu.</p>
+                </div>
+                <div class="card">
+                    <p class="card-title">2. Tùy chọn giữ định dạng</p>
+                    <div style="margin-bottom:8px;">
+                        <label style="font-size:11px; font-weight:600; color:#555;">Trang cần chuyển (để trống = tất cả):</label>
+                        <input type="text" id="w2d-pages" placeholder="ví dụ: 1-3,5,8">
+                    </div>
+                    <label style="font-size:12px; display:flex; align-items:center; gap:6px; cursor:pointer; margin-bottom:4px;">
+                        <input type="checkbox" id="w2d-lattice" checked> Dựng bảng có đường viền thành bảng Word
+                    </label>
+                    <label style="font-size:12px; display:flex; align-items:center; gap:6px; cursor:pointer; margin-bottom:4px;">
+                        <input type="checkbox" id="w2d-stream" checked> Dựng bảng không viền (căn theo cột chữ)
+                    </label>
+                    <label style="font-size:12px; display:flex; align-items:center; gap:6px; cursor:pointer; margin-bottom:4px;">
+                        <input type="checkbox" id="w2d-hyphen"> Bỏ dấu gạch nối cuối dòng
+                    </label>
+                    <p class="editor-hint">Mặc định bật cả hai kiểu bảng là cách giữ bố cục sát bản gốc nhất. Nếu bản Word bị vỡ bố cục, thử tắt "bảng không viền".</p>
+                    <details style="margin-top:6px;">
+                        <summary style="font-size:11px; cursor:pointer; color:#555;">Nâng cao: nguồn bộ chuyển đổi</summary>
+                        <input type="text" id="w2d-base" style="margin-top:4px; font-size:11px;" value="https://cdn.jsdelivr.net/npm/@bentopdf/pymupdf-wasm@0.11.16/">
+                        <p class="editor-hint">Bộ chuyển đổi (~55 MB) tải một lần từ mạng rồi được trình duyệt lưu lại. Muốn dùng offline, đặt bộ này trên máy chủ nội bộ rồi nhập địa chỉ vào đây.</p>
+                    </details>
+                </div>
+                <div class="card">
+                    <p class="card-title">3. Chuyển đổi</p>
+                    <button class="btn btn-success" id="w2d-run-btn" disabled>📝 CHUYỂN SANG WORD</button>
+                    <button class="btn" id="w2d-zip-btn" style="display:none;">📦 Tải tất cả (ZIP)</button>
+                    <button class="btn btn-danger" id="w2d-clear-btn" style="display:none;">🧹 Xóa danh sách</button>
+                </div>
+            </div>
+            <div class="right-panel" id="w2d-drop">
+                <div class="preview-header">
+                    <span class="merge-preview-title">DANH SÁCH FILE PDF → WORD</span>
+                </div>
+                <div class="file-list" id="w2d-list" style="margin-top:8px;">
+                    <div style="color:gray; font-style:italic; text-align:center; padding-top:40px;">Chưa chọn file nào. Kéo thả PDF vào đây hoặc bấm "Chọn file PDF".</div>
+                </div>
+                <div id="w2d-progress-wrap" style="display:none; margin-top:10px;">
+                    <div style="height:8px; background:#e1dfdd; border-radius:4px; overflow:hidden;"><div id="w2d-progress-bar" style="height:100%; width:0; background:var(--success); transition:width .2s;"></div></div>
+                    <div id="w2d-status" class="editor-hint" style="margin-top:4px;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="tab-excel" class="tab-content">
+        <div class="main-container">
+            <div class="left-panel">
+                <div class="card">
+                    <p class="card-title">1. Chọn file PDF</p>
+                    <input type="file" id="w2x-input" accept="application/pdf" multiple style="display:none">
+                    <button class="btn" onclick="document.getElementById('w2x-input').click()">➕ Chọn một hoặc nhiều file PDF</button>
+                    <p class="editor-hint" style="margin-top:2px;">Hoặc kéo thả file PDF vào khung bên phải. Chuyển đổi ngay trên máy bạn, file không bị gửi đi đâu.</p>
+                </div>
+                <div class="card">
+                    <p class="card-title">2. Tùy chọn giữ định dạng</p>
+                    <div style="margin-bottom:8px;">
+                        <label style="font-size:11px; font-weight:600; color:#555;">Trang cần chuyển (để trống = tất cả):</label>
+                        <input type="text" id="w2x-pages" placeholder="ví dụ: 1-3,5,8">
+                    </div>
+                    <div style="margin-bottom:8px;">
+                        <label style="font-size:11px; font-weight:600; color:#555;">Cách xếp vào Excel:</label>
+                        <select id="w2x-mode" style="width:100%; height:32px; border:1px solid #cbd5e1; border-radius:4px; padding:0 6px; background:#fff;">
+                            <option value="page">Mỗi trang một sheet (giữ cả chữ và bảng đúng thứ tự)</option>
+                            <option value="table">Mỗi bảng một sheet (chỉ lấy bảng)</option>
+                        </select>
+                    </div>
+                    <div style="margin-bottom:8px;">
+                        <label style="font-size:11px; font-weight:600; color:#555;">Kiểu số trong PDF:</label>
+                        <select id="w2x-num" style="width:100%; height:32px; border:1px solid #cbd5e1; border-radius:4px; padding:0 6px; background:#fff;">
+                            <option value="auto">Tự nhận (1.200.000 hoặc 1,200,000)</option>
+                            <option value="vn">Kiểu Việt Nam (chấm là hàng nghìn, phẩy là thập phân)</option>
+                            <option value="en">Kiểu Anh/Mỹ (phẩy là hàng nghìn, chấm là thập phân)</option>
+                            <option value="text">Giữ nguyên là chữ, không đổi thành số</option>
+                        </select>
+                    </div>
+                    <label style="font-size:12px; display:flex; align-items:center; gap:6px; cursor:pointer; margin-bottom:4px;">
+                        <input type="checkbox" id="w2x-stream"> Dò cả bảng không có đường viền
+                    </label>
+                    <label style="font-size:12px; display:flex; align-items:center; gap:6px; cursor:pointer; margin-bottom:4px;">
+                        <input type="checkbox" id="w2x-fit" checked> Thu vừa một trang ngang khi in
+                    </label>
+                    <p class="editor-hint">Bảng có đường viền được dựng thành ô Excel (kể cả ô gộp), giữ font, đậm/nghiêng, màu chữ, màu nền, căn lề, độ rộng cột và chiều cao dòng. Chữ ngoài bảng được đặt theo vị trí. Bảng không viền thường vẫn thành các cột thẳng hàng, bật dò bảng nếu muốn có đường kẻ.</p>
+                    <details style="margin-top:6px;">
+                        <summary style="font-size:11px; cursor:pointer; color:#555;">Nâng cao: nguồn bộ chuyển đổi</summary>
+                        <input type="text" id="w2x-base" style="margin-top:4px; font-size:11px;" value="https://cdn.jsdelivr.net/npm/@bentopdf/pymupdf-wasm@0.11.16/">
+                        <p class="editor-hint">Dùng chung bộ chuyển đổi với tab PDF → Word (~55 MB, tải một lần). Ghi Excel cần thêm thư viện ExcelJS tải từ mạng.</p>
+                    </details>
+                </div>
+                <div class="card">
+                    <p class="card-title">3. Chuyển đổi</p>
+                    <button class="btn btn-success" id="w2x-run-btn" disabled>📊 CHUYỂN SANG EXCEL</button>
+                    <button class="btn" id="w2x-zip-btn" style="display:none;">📦 Tải tất cả (ZIP)</button>
+                    <button class="btn btn-danger" id="w2x-clear-btn" style="display:none;">🧹 Xóa danh sách</button>
+                </div>
+            </div>
+            <div class="right-panel" id="w2x-drop">
+                <div class="preview-header">
+                    <span class="merge-preview-title">DANH SÁCH FILE PDF → EXCEL</span>
+                </div>
+                <div class="file-list" id="w2x-list" style="margin-top:8px;">
+                    <div style="color:gray; font-style:italic; text-align:center; padding-top:40px;">Chưa chọn file nào. Kéo thả PDF vào đây hoặc bấm "Chọn file PDF".</div>
+                </div>
+                <div id="w2x-progress-wrap" style="display:none; margin-top:10px;">
+                    <div style="height:8px; background:#e1dfdd; border-radius:4px; overflow:hidden;"><div id="w2x-progress-bar" style="height:100%; width:0; background:var(--success); transition:width .2s;"></div></div>
+                    <div id="w2x-status" class="editor-hint" style="margin-top:4px;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+<div id="tab-tools" class="tab-content">
+        <div class="main-container">
+            <div class="left-panel">
+                <div class="card">
+                    <p class="card-title">1. Chọn công cụ</p>
+                    <select id="tl-tool" class="tl-in">
+                        <optgroup label="Trang &amp; file">
+                            <option value="split">✂️ Tách file PDF</option>
+                            <option value="compress">🗜️ Nén PDF (giảm dung lượng)</option>
+                            <option value="blank">🧽 Loại bỏ trang trắng</option>
+                        </optgroup>
+                        <optgroup label="Chuyển đổi">
+                            <option value="pdf2img">🖼️ PDF → Ảnh (PNG/JPG)</option>
+                            <option value="img2pdf">📄 Ảnh → PDF</option>
+                            <option value="ocr">🔍 OCR: PDF scan → PDF tìm kiếm được</option>
+                        </optgroup>
+                        <optgroup label="Bảo mật">
+                            <option value="protect">🔒 Đặt / gỡ mật khẩu</option>
+                            <option value="meta">🧹 Xóa / sửa metadata</option>
+                        </optgroup>
+                        <optgroup label="Đánh dấu">
+                            <option value="watermark">💧 Chèn watermark</option>
+                            <option value="pagenum">🔢 Đánh số trang</option>
+                            <option value="bookmark">🔖 Tạo mục lục (bookmark)</option>
+                        </optgroup>
+                    </select>
+                    <p class="editor-hint" id="tl-hint" style="margin-top:4px;"></p>
+                </div>
+                <div class="card">
+                    <p class="card-title">2. Chọn file</p>
+                    <input type="file" id="tl-input" accept="application/pdf" multiple style="display:none">
+                    <button class="btn" id="tl-pick-btn">➕ Chọn file PDF</button>
+                    <p class="editor-hint" style="margin-top:2px;">Hoặc kéo thả vào khung bên phải. Mọi thao tác chạy ngay trên máy bạn, file không bị gửi đi đâu.</p>
+                </div>
+                <div class="card">
+                    <p class="card-title">3. Tùy chọn</p>
+
+                    <div class="tl-opts" data-tool="split">
+                        <label class="tl-lb">Cách tách:</label>
+                        <select id="tl-split-mode" class="tl-in">
+                            <option value="ranges">Theo khoảng trang (mỗi khoảng một file)</option>
+                            <option value="every">Cứ N trang một file</option>
+                            <option value="each">Mỗi trang một file</option>
+                            <option value="extract">Trích các trang đã chọn thành một file</option>
+                        </select>
+                        <div id="tl-split-ranges-row">
+                            <label class="tl-lb">Trang / khoảng trang:</label>
+                            <input type="text" id="tl-split-ranges" class="tl-in" placeholder="ví dụ: 1-3, 4-6, 9">
+                            <p class="editor-hint">Với "theo khoảng trang", mỗi mục cách nhau dấu phẩy sẽ ra một file riêng. Với "trích", các trang gom chung một file.</p>
+                        </div>
+                        <div id="tl-split-n-row" style="display:none;">
+                            <label class="tl-lb">Số trang mỗi file (N):</label>
+                            <input type="number" id="tl-split-n" class="tl-in" min="1" value="10">
+                        </div>
+                    </div>
+
+                    <div class="tl-opts" data-tool="blank">
+                        <label class="tl-lb">Độ nhạy khi nhận biết trang trắng:</label>
+                        <select id="tl-blank-sens" class="tl-in">
+                            <option value="strict">Chặt: chỉ bỏ trang trắng hoàn toàn</option>
+                            <option value="normal" selected>Thường: bỏ cả trang có vài chấm bụi, nhiễu scan nhẹ</option>
+                            <option value="loose">Lỏng: bỏ cả trang chỉ còn số trang hoặc vài nét nhỏ</option>
+                        </select>
+                        <label class="tl-lb">Bỏ qua vùng sát mép trang (mm):</label>
+                        <input type="number" id="tl-blank-margin" class="tl-in" min="0" max="40" value="0">
+                        <p class="editor-hint" style="margin-top:4px;">Nên đặt 5-10 mm nếu bản scan có viền đen, bóng đổ hoặc dấu bấm ghim ở mép. Trang bị bỏ được liệt kê ngay dưới tên file, hãy xem lại kết quả trước khi dùng.</p>
+                    </div>
+
+                    <div class="tl-opts" data-tool="compress">
+                        <label class="tl-lb">Mức nén:</label>
+                        <select id="tl-comp-level" class="tl-in">
+                            <option value="light">Nhẹ: giữ nét cao, nén ảnh bên trong</option>
+                            <option value="balanced" selected>Cân bằng: nén ảnh bên trong (khuyên dùng)</option>
+                            <option value="strong">Mạnh: ảnh nhỏ hơn, giảm độ nét</option>
+                            <option value="raster">Tối đa: chuyển mỗi trang thành ảnh (mất chữ chọn được)</option>
+                        </select>
+                        <p class="editor-hint">Ba mức đầu giữ nguyên chữ và bố cục, chỉ nén lại các ảnh nhúng trong PDF (hiệu quả nhất với PDF scan hoặc nhiều ảnh). Mức "Tối đa" biến cả trang thành ảnh JPEG, nhỏ nhất nhưng không còn chọn/tìm chữ được; có thể OCR lại sau. Nếu không giảm được dung lượng, tool giữ nguyên file gốc.</p>
+                    </div>
+
+                    <div class="tl-opts" data-tool="pdf2img">
+                        <label class="tl-lb">Định dạng:</label>
+                        <select id="tl-p2i-fmt" class="tl-in"><option value="image/png">PNG (nét, nền trong suốt không có)</option><option value="image/jpeg">JPG (nhẹ hơn)</option></select>
+                        <label class="tl-lb">Độ phân giải:</label>
+                        <select id="tl-p2i-dpi" class="tl-in"><option value="72">72 DPI (xem màn hình)</option><option value="110">110 DPI</option><option value="150" selected>150 DPI (cân bằng)</option><option value="200">200 DPI</option><option value="300">300 DPI (in ấn)</option></select>
+                        <label class="tl-lb">Trang cần xuất (trống = tất cả):</label>
+                        <input type="text" id="tl-p2i-pages" class="tl-in" placeholder="ví dụ: 1-3,5">
+                    </div>
+
+                    <div class="tl-opts" data-tool="img2pdf">
+                        <label class="tl-lb">Khổ trang:</label>
+                        <select id="tl-i2p-size" class="tl-in">
+                            <option value="a4auto">A4, tự chọn dọc/ngang theo ảnh</option>
+                            <option value="a4p">A4 dọc</option>
+                            <option value="a4l">A4 ngang</option>
+                            <option value="letter">Letter (dọc/ngang tự chọn)</option>
+                            <option value="fit">Đúng kích thước từng ảnh</option>
+                        </select>
+                        <label class="tl-lb">Lề (mm):</label>
+                        <input type="number" id="tl-i2p-margin" class="tl-in" min="0" max="50" value="0">
+                        <p class="editor-hint">Thứ tự trang theo thứ tự danh sách bên phải (dùng nút ↑ ↓ để đổi). Tất cả ảnh gộp thành một file PDF.</p>
+                    </div>
+
+                    <div class="tl-opts" data-tool="ocr">
+                        <label class="tl-lb">Ngôn ngữ nhận dạng:</label>
+                        <select id="tl-ocr-lang" class="tl-in"><option value="vie+eng" selected>Tiếng Việt + Tiếng Anh</option><option value="vie">Tiếng Việt</option><option value="eng">Tiếng Anh</option></select>
+                        <label class="tl-lb">Độ phân giải quét:</label>
+                        <select id="tl-ocr-dpi" class="tl-in"><option value="150">150 DPI (nhanh)</option><option value="200" selected>200 DPI (cân bằng)</option><option value="300">300 DPI (chính xác, chậm)</option></select>
+                        <label class="tl-lb">Kết quả:</label>
+                        <select id="tl-ocr-out" class="tl-in"><option value="pdf">PDF tìm kiếm được (giữ nguyên hình ảnh gốc)</option><option value="txt">Chỉ file văn bản .txt</option><option value="both">Cả hai</option></select>
+                        <label class="tl-lb">Trang cần OCR (trống = tất cả):</label>
+                        <input type="text" id="tl-ocr-pages" class="tl-in" placeholder="ví dụ: 1-5">
+                        <p class="editor-hint">Chữ nhận dạng được đặt vô hình đè lên ảnh scan, nên bạn tìm kiếm, chọn và copy chữ được. Sau khi OCR, dùng file kết quả ở các tab PDF → Word / Excel / So sánh. Lần đầu cần tải dữ liệu nhận dạng (khoảng 15 MB), sau đó được lưu lại trong trình duyệt.</p>
+                    </div>
+
+                    <div class="tl-opts" data-tool="protect">
+                        <label class="tl-lb">Thao tác:</label>
+                        <select id="tl-pw-mode" class="tl-in"><option value="set">Đặt mật khẩu (mã hóa AES-256)</option><option value="remove">Gỡ mật khẩu</option></select>
+                        <div id="tl-pw-set">
+                            <label class="tl-lb">Mật khẩu mở file:</label>
+                            <input type="password" id="tl-pw-user" class="tl-in" autocomplete="new-password" placeholder="để trống nếu chỉ muốn hạn chế quyền">
+                            <label class="tl-lb">Mật khẩu chủ (để đổi quyền, tùy chọn):</label>
+                            <input type="password" id="tl-pw-owner" class="tl-in" autocomplete="new-password">
+                            <label class="tl-lb">Cho phép:</label>
+                            <label class="tl-ck"><input type="checkbox" id="tl-pw-print" checked> In</label>
+                            <label class="tl-ck"><input type="checkbox" id="tl-pw-copy" checked> Sao chép chữ</label>
+                            <label class="tl-ck"><input type="checkbox" id="tl-pw-edit"> Chỉnh sửa, ghi chú</label>
+                        </div>
+                        <div id="tl-pw-rm" style="display:none;">
+                            <label class="tl-lb">Mật khẩu hiện tại (nếu có):</label>
+                            <input type="password" id="tl-pw-cur" class="tl-in" autocomplete="off">
+                            <p class="editor-hint">Cần biết mật khẩu mở file. Tool không bẻ khóa mật khẩu.</p>
+                        </div>
+                        <details style="margin-top:6px;">
+                            <summary style="font-size:11px; cursor:pointer; color:#555;">Nâng cao: nguồn bộ xử lý</summary>
+                            <input type="text" id="tl-base" class="tl-in" style="margin-top:4px; font-size:11px;" value="https://cdn.jsdelivr.net/npm/@bentopdf/pymupdf-wasm@0.11.16/">
+                            <p class="editor-hint">Chức năng mật khẩu dùng chung bộ PyMuPDF với tab PDF → Word (~55 MB, tải một lần).</p>
+                        </details>
+                    </div>
+
+                    <div class="tl-opts" data-tool="meta">
+                        <label class="tl-lb">Thao tác:</label>
+                        <select id="tl-meta-mode" class="tl-in"><option value="clear">Xóa sạch metadata (tác giả, tiêu đề, phần mềm, ngày tạo...)</option><option value="edit">Sửa metadata</option></select>
+                        <div id="tl-meta-edit" style="display:none;">
+                            <label class="tl-lb">Tiêu đề:</label><input type="text" id="tl-meta-title" class="tl-in">
+                            <label class="tl-lb">Tác giả:</label><input type="text" id="tl-meta-author" class="tl-in">
+                            <label class="tl-lb">Chủ đề:</label><input type="text" id="tl-meta-subject" class="tl-in">
+                            <label class="tl-lb">Từ khóa (cách nhau dấu phẩy):</label><input type="text" id="tl-meta-keywords" class="tl-in">
+                            <label class="tl-lb">Ứng dụng tạo:</label><input type="text" id="tl-meta-creator" class="tl-in">
+                            <label class="tl-lb">Trình tạo PDF:</label><input type="text" id="tl-meta-producer" class="tl-in">
+                            <p class="editor-hint">Ô trống sẽ bị xóa khỏi file. Các ô được điền sẵn từ file đầu tiên trong danh sách.</p>
+                        </div>
+                        <label class="tl-ck"><input type="checkbox" id="tl-meta-xmp" checked> Xóa luôn metadata XMP ẩn</label>
+                    </div>
+
+                    <div class="tl-opts" data-tool="watermark">
+                        <label class="tl-lb">Loại:</label>
+                        <select id="tl-wm-type" class="tl-in"><option value="text">Chữ</option><option value="image">Ảnh (logo, con dấu)</option></select>
+                        <div id="tl-wm-text-row">
+                            <label class="tl-lb">Nội dung chữ:</label>
+                            <input type="text" id="tl-wm-text" class="tl-in" value="BẢN SAO">
+                            <div class="tl-grid2">
+                                <div><label class="tl-lb">Cỡ chữ:</label><input type="number" id="tl-wm-size" class="tl-in" min="8" max="400" value="72"></div>
+                                <div><label class="tl-lb">Màu:</label><input type="color" id="tl-wm-color" class="tl-in" value="#c42b2b" style="padding:2px;"></div>
+                            </div>
+                            <label class="tl-ck"><input type="checkbox" id="tl-wm-bold" checked> Chữ đậm</label>
+                        </div>
+                        <div id="tl-wm-img-row" style="display:none;">
+                            <label class="tl-lb">Chọn ảnh (PNG/JPG):</label>
+                            <input type="file" id="tl-wm-img" accept="image/*" class="tl-in" style="height:auto;">
+                            <label class="tl-lb">Độ rộng ảnh (% chiều rộng trang):</label>
+                            <input type="number" id="tl-wm-imgw" class="tl-in" min="5" max="100" value="40">
+                        </div>
+                        <div class="tl-grid2">
+                            <div><label class="tl-lb">Độ mờ (%):</label><input type="number" id="tl-wm-op" class="tl-in" min="5" max="100" value="25"></div>
+                            <div><label class="tl-lb">Góc xoay (độ):</label><input type="number" id="tl-wm-rot" class="tl-in" min="-180" max="180" value="45"></div>
+                        </div>
+                        <label class="tl-lb">Vị trí:</label>
+                        <select id="tl-wm-pos" class="tl-in"><option value="center">Chính giữa trang</option><option value="tile">Lặp kín trang</option></select>
+                        <label class="tl-lb">Trang áp dụng (trống = tất cả):</label>
+                        <input type="text" id="tl-wm-pages" class="tl-in" placeholder="ví dụ: 1-3,5">
+                    </div>
+
+                    <div class="tl-opts" data-tool="pagenum">
+                        <label class="tl-lb">Định dạng:</label>
+                        <select id="tl-pn-fmt" class="tl-in">
+                            <option value="{n}">1, 2, 3...</option>
+                            <option value="{n}/{N}">1/10, 2/10...</option>
+                            <option value="Trang {n}">Trang 1, Trang 2...</option>
+                            <option value="Trang {n}/{N}">Trang 1/10, Trang 2/10...</option>
+                            <option value="- {n} -">- 1 -, - 2 -...</option>
+                        </select>
+                        <label class="tl-lb">Vị trí:</label>
+                        <select id="tl-pn-pos" class="tl-in">
+                            <option value="bc">Dưới, giữa</option><option value="br">Dưới, phải</option><option value="bl">Dưới, trái</option>
+                            <option value="tc">Trên, giữa</option><option value="tr">Trên, phải</option><option value="tl">Trên, trái</option>
+                        </select>
+                        <div class="tl-grid2">
+                            <div><label class="tl-lb">Cỡ chữ:</label><input type="number" id="tl-pn-size" class="tl-in" min="6" max="48" value="11"></div>
+                            <div><label class="tl-lb">Màu:</label><input type="color" id="tl-pn-color" class="tl-in" value="#333333" style="padding:2px;"></div>
+                        </div>
+                        <div class="tl-grid2">
+                            <div><label class="tl-lb">Bắt đầu đánh từ trang:</label><input type="number" id="tl-pn-from" class="tl-in" min="1" value="1"></div>
+                            <div><label class="tl-lb">Số của trang đầu:</label><input type="number" id="tl-pn-start" class="tl-in" min="0" value="1"></div>
+                        </div>
+                        <label class="tl-lb">Cách mép (mm):</label>
+                        <input type="number" id="tl-pn-margin" class="tl-in" min="3" max="60" value="10">
+                        <p class="editor-hint">Ví dụ bỏ trang bìa: đặt "Bắt đầu đánh từ trang" = 2.</p>
+                    </div>
+
+                    <div class="tl-opts" data-tool="bookmark">
+                        <label class="tl-lb">Danh sách mục lục (mỗi dòng một mục):</label>
+                        <textarea id="tl-bm-text" class="tl-in" rows="9" style="height:auto; font-family:Consolas,monospace; font-size:12px;" placeholder="Chương 1 | 1&#10;-Mục 1.1 | 2&#10;-Mục 1.2 | 4&#10;Chương 2 | 7"></textarea>
+                        <p class="editor-hint">Định dạng: <b>Tiêu đề | số trang</b>. Thêm dấu <b>-</b> đầu dòng để làm mục con (-- cho cấp 3).</p>
+                        <button class="btn" id="tl-bm-load" type="button">📥 Lấy mục lục hiện có của file đầu tiên</button>
+                        <button class="btn" id="tl-bm-pages" type="button">📃 Mỗi trang một mục</button>
+                    </div>
+                </div>
+                <div class="card">
+                    <p class="card-title">4. Thực hiện</p>
+                    <button class="btn btn-success" id="tl-run-btn" disabled>▶ THỰC HIỆN</button>
+                    <button class="btn" id="tl-zip-btn" style="display:none;">📦 Tải tất cả (ZIP)</button>
+                    <button class="btn btn-danger" id="tl-clear-btn" style="display:none;">🧹 Xóa danh sách</button>
+                </div>
+            </div>
+            <div class="right-panel" id="tl-drop">
+                <div class="preview-header">
+                    <span class="merge-preview-title" id="tl-list-title">DANH SÁCH FILE</span>
+                </div>
+                <div class="file-list" id="tl-list" style="margin-top:8px;"></div>
+                <div id="tl-progress-wrap" style="display:none; margin-top:10px;">
+                    <div style="height:8px; background:#e1dfdd; border-radius:4px; overflow:hidden;"><div id="tl-progress-bar" style="height:100%; width:0; background:var(--success); transition:width .2s;"></div></div>
+                    <div id="tl-status" class="editor-hint" style="margin-top:4px;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+<div id="tab-about" class="tab-content">
+
+    <div class="about-container"
+         style="display:flex; flex-direction:column; gap:20px;">
+
+        <div class="about-left">
+
+            <h1 style="color:var(--primary);
+                       margin-top:0;
+                       display:inline-flex;
+                       align-items:center;
+                       gap:10px;">
+
+                <img src="logo.png"
+                     alt="Logo"
+                     style="height:30px; width:auto;"
+                     onerror="this.style.display='none'">
+
+                <span>PDF Tool - By Hachihi.vn - Hotline: 093 384 21 26</span>
+
+            </h1>
+
+            <p style="font-style:italic;
+                      color:var(--primary-hover);">
+                Phiên bản V020726, Miễn phí cho mọi người -
+                Hỗ trợ kỹ thuật: Hải Hoàng 09-1800-1944
+            </p>
+
+            <p style="font-size:13px;">
+                🔐 File PDF được xử lý ngay trên máy bạn, không tải lên máy chủ.
+                Ứng dụng chỉ ghi thống kê ẩn danh tên thao tác (không có nội dung file).
+                <label style="display:inline-flex; align-items:center; gap:6px; margin-left:6px; cursor:pointer;">
+                    <input type="checkbox" id="no-log-chk"> Không gửi thống kê
+                </label>
+            </p>
+
+            <hr style="border:0;
+                       border-top:1px solid #d2d0ce;
+                       margin:20px 0;">
+
+            <p><b>💡 TÍNH NĂNG:</b></p>
+
+            <ul style="line-height:1.6;">
+
+                <li>
+                    <b>Xoay trang, sắp xếp Kéo-Thả (Drag & Drop):</b>
+                    Trực quan thay đổi thứ tự tài liệu. WATERMARK
+                </li>
+
+                <li>
+                    <b>So Sánh Tuyệt Đối (Strict Compare):</b>
+                    Cho phép đặt chồng hai tài liệu lên nhau và ẩn/hiện
+                    từng lớp theo ý muốn để đối chiếu văn bản chỉnh sửa.
+                </li>
+
+                <li>
+                    <b>Chỉnh Sửa Văn Bản Tiếng Việt:</b>
+                    Cho phép kéo thả chữ trực tiếp, hỗ trợ font Unicode
+                    tiếng Việt.
+                </li>
+
+                <li>
+                    <b>Tích hợp bộ công cụ vẽ:</b>
+                    Hỗ trợ vẽ tự do, đường thẳng, hình vuông, hình tròn,
+                    mũi tên, elip chuẩn vector với nét vẽ tùy biến.
+                </li>
+
+                <li>
+                    <b>Chuyển đổi giữ định dạng:</b>
+                    PDF → Word, PDF → Excel (ô gộp, màu, font, căn lề), PDF ↔ Ảnh,
+                    OCR cho PDF scan (tiếng Việt).
+                </li>
+
+                <li>
+                    <b>Bộ công cụ PDF:</b>
+                    Tách file, nén PDF, đặt / gỡ mật khẩu, watermark, đánh số trang,
+                    tạo mục lục (bookmark), xóa / sửa metadata.
+                </li>
+
+                <li>
+                    <b>Hoàn toàn Client-Side:</b>
+                    Không thu thập file dữ liệu của người sử dụng.
+                </li>
+
+            </ul>
+
+            <div class="card" style="width:100%; max-width:none; box-sizing:border-box; margin-top:12px;">
+                <p class="card-title">📴 Dùng khi không có mạng</p>
+                <p class="editor-hint" id="off-info"></p>
+                <button class="btn" id="off-btn" type="button">⬇ Tải sẵn các thư viện để dùng offline</button>
+                <div id="off-status" class="editor-hint" style="margin-top:4px;"></div>
+            </div>
+
+        </div>
+
+        <div class="about-form" style="width:100%; margin-top:10px;">
+            <div id="feedback-box" style="text-align:center; padding:24px; border:1px solid #d2d0ce; border-radius:8px; background:#fff;">
+                <p style="margin:0 0 12px; font-weight:bold; color:var(--primary);">📝 Góp ý / Báo lỗi</p>
+                <a id="feedback-link" href="https://forms.gle/NdVxwTiSXKvBRehW7" target="_blank" rel="noopener"
+                   style="display:inline-block; padding:10px 24px; background:var(--primary); color:#fff; border-radius:4px; font-weight:bold; text-decoration:none;">
+                    Mở form phản hồi
+                </a>
+            </div>
+        </div>
+
+    </div>
+
+</div>
+
+
+
+
+<script src="vendor/pdf-lib.min.js"></script>
+<script src="vendor/fontkit.umd.min.js"></script>
+<script src="vendor/pdf.min.js"></script>
+<script src="legacy/00-fonts-meta.js"></script>
+<script src="legacy/10-core.js"></script>
+<script src="legacy/20-a.js"></script>
+<script src="legacy/30-b.js"></script>
+<script src="legacy/40-c.js"></script>
+<script src="legacy/50-d.js"></script>
+<script src="legacy/60-e.js"></script>
+<script src="legacy/70-f.js"></script>
+<script src="legacy/80-g.js"></script>
+<script src="legacy/90-i18n-a.js"></script>
+<script src="legacy/91-i18n-b.js"></script>
+<script src="legacy/fonts-data.js" defer></script>
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
