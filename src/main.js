@@ -1,8 +1,9 @@
-// Lớp UX bổ sung cho app legacy: toast, tiến trình, phím tắt, kéo thả toàn trang
 import './styles/ux.css';
+import './styles/word-ribbon.css';
 import { initSign } from './features/sign.js';
 import { initForm } from './features/form.js';
 import { initRedact } from './features/redact.js';
+import { initEditorWordRibbon } from './features/editorWordRibbon.js';
 
 // ---------- Toast ----------
 const toastBox = Object.assign(document.createElement('div'), { id: 'toast-box' });
@@ -58,6 +59,7 @@ addEventListener('drop', (e) => {
 initSign();
 initForm();
 initRedact();
+initEditorWordRibbon();
 const tabs = ['tab-main', 'tab-merge', 'tab-compare', 'tab-editor'];
 const help = Object.assign(document.createElement('div'), {
   id: 'shortcut-help',

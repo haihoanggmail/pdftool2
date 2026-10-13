@@ -45,6 +45,8 @@
         <button class="menu-item" onclick="switchTab('tab-tools', this); toolsSelect('ocr')">🔍 OCR: PDF scan → PDF tìm kiếm được</button>
     </div>
     <div class="nav-menu" id="menu-tools" data-owner="nav-tools">
+        <div class="menu-sep" style="color:var(--primary); font-weight:bold;">⚡ Tự động hóa liên hoàn</div>
+        <button class="menu-item" style="color:var(--primary); font-weight:bold;" onclick="switchTab('tab-tools', this); toolsSelect('pipeline')">⚡ Chuỗi liên hoàn (Nhiều bước 1 lần)</button>
         <div class="menu-sep">Trang &amp; file</div>
         <button class="menu-item" onclick="switchTab('tab-tools', this); toolsSelect('split')">✂️ Tách file</button>
         <button class="menu-item" onclick="switchTab('tab-tools', this); toolsSelect('compress')">🗜️ Nén PDF</button>
@@ -509,6 +511,9 @@
                 <div class="card">
                     <p class="card-title">1. Chọn công cụ</p>
                     <select id="tl-tool" class="tl-in">
+                        <optgroup label="⚡ Tự động hóa liên hoàn">
+                            <option value="pipeline">⚡ Chuỗi liên hoàn (Bỏ trang trắng + Canh lề + Đánh số... 1 lần)</option>
+                        </optgroup>
                         <optgroup label="Trang &amp; file">
                             <option value="split">✂️ Tách file PDF</option>
                             <option value="compress">🗜️ Nén PDF (giảm dung lượng)</option>
@@ -540,6 +545,154 @@
                 </div>
                 <div class="card">
                     <p class="card-title">3. Tùy chọn</p>
+
+                    <div class="tl-opts" data-tool="pipeline">
+                        <p style="font-size:12px; color:#475569; margin:0 0 8px; line-height:1.4;">
+                            Tích chọn các bước bạn muốn xử lý trên file (chạy liên hoàn 1 lần ra file hoàn chỉnh):
+                        </p>
+
+                        <div class="pipe-steps" style="display:flex; flex-direction:column; gap:6px;">
+
+                            <!-- Bước 1: Loại bỏ trang trắng -->
+                            <div class="tl-card-sub" style="border:1px solid #cbd5e1; border-radius:6px; padding:8px 10px; background:#fff;">
+                                <div style="display:flex; justify-content:space-between; align-items:center;">
+                                    <label class="tl-ck" style="font-weight:600; margin:0; cursor:pointer;">
+                                        <input type="checkbox" id="tl-pipe-blank-en" checked> 1. 🧽 Loại bỏ trang trắng
+                                    </label>
+                                    <button type="button" class="btn btn-small" onclick="togglePipeOpt('pipe-blank-opts', this)" style="width:auto; padding:1px 6px; font-size:10px;">⚙️ Tùy chọn</button>
+                                </div>
+                                <div id="pipe-blank-opts" style="display:none; margin-top:6px; padding-top:6px; border-top:1px dashed #e2e8f0;">
+                                    <label class="tl-lb">Độ nhạy nhận biết:</label>
+                                    <select id="tl-pipe-blank-sens" class="tl-in">
+                                        <option value="normal" selected>Thường (khuyên dùng)</option>
+                                        <option value="strict">Chặt: chỉ xóa trang trắng 100%</option>
+                                        <option value="loose">Lỏng: xóa cả trang chỉ có vài chấm/số trang</option>
+                                    </select>
+                                    <label class="tl-lb">Bỏ qua mép trang scan (mm):</label>
+                                    <input type="number" id="tl-pipe-blank-margin" class="tl-in" min="0" max="40" value="0">
+                                </div>
+                            </div>
+
+                            <!-- Bước 2: Canh lề trang -->
+                            <div class="tl-card-sub" style="border:1px solid #cbd5e1; border-radius:6px; padding:8px 10px; background:#fff;">
+                                <div style="display:flex; justify-content:space-between; align-items:center;">
+                                    <label class="tl-ck" style="font-weight:600; margin:0; cursor:pointer;">
+                                        <input type="checkbox" id="tl-pipe-margin-en" checked> 2. 📐 Canh lề trang (Margin)
+                                    </label>
+                                    <button type="button" class="btn btn-small" onclick="togglePipeOpt('pipe-margin-opts', this)" style="width:auto; padding:1px 6px; font-size:10px;">⚙️ Tùy chọn</button>
+                                </div>
+                                <div id="pipe-margin-opts" style="display:none; margin-top:6px; padding-top:6px; border-top:1px dashed #e2e8f0;">
+                                    <label class="tl-lb">Mẫu canh lề:</label>
+                                    <select id="tl-pipe-mg-preset" class="tl-in" onchange="pipeApplyMarginPreset(this.value)">
+                                        <option value="nd30" selected>🇻🇳 Nghị định 30/2020 (Trái 30, Phải 15, Trên 20, Dưới 20 mm)</option>
+                                        <option value="book">📖 Đóng gáy sách (Gáy 30mm, Ngoài 15mm, đảo trang chẵn)</option>
+                                        <option value="thesis">🎓 Luận văn / Đồ án (Trái 35mm, Phải 20mm, Trên 20mm, Dưới 20mm)</option>
+                                        <option value="equal15">🔲 Lề đều 15 mm</option>
+                                        <option value="equal20">🔲 Lề đều 20 mm</option>
+                                        <option value="custom">Tùy chỉnh...</option>
+                                    </select>
+                                    <div class="tl-grid2">
+                                        <div><label class="tl-lb">Trái (mm):</label><input type="number" id="tl-pipe-mg-left" class="tl-in" value="30"></div>
+                                        <div><label class="tl-lb">Phải (mm):</label><input type="number" id="tl-pipe-mg-right" class="tl-in" value="15"></div>
+                                    </div>
+                                    <div class="tl-grid2">
+                                        <div><label class="tl-lb">Trên (mm):</label><input type="number" id="tl-pipe-mg-top" class="tl-in" value="20"></div>
+                                        <div><label class="tl-lb">Dưới (mm):</label><input type="number" id="tl-pipe-mg-bottom" class="tl-in" value="20"></div>
+                                    </div>
+                                    <label class="tl-ck"><input type="checkbox" id="tl-pipe-mg-mirror"> 📖 Đảo lề trang chẵn (in 2 mặt / đóng gáy)</label>
+                                </div>
+                            </div>
+
+                            <!-- Bước 3: Đánh số trang -->
+                            <div class="tl-card-sub" style="border:1px solid #cbd5e1; border-radius:6px; padding:8px 10px; background:#fff;">
+                                <div style="display:flex; justify-content:space-between; align-items:center;">
+                                    <label class="tl-ck" style="font-weight:600; margin:0; cursor:pointer;">
+                                        <input type="checkbox" id="tl-pipe-pagenum-en"> 3. 🔢 Đánh số trang
+                                    </label>
+                                    <button type="button" class="btn btn-small" onclick="togglePipeOpt('pipe-pagenum-opts', this)" style="width:auto; padding:1px 6px; font-size:10px;">⚙️ Tùy chọn</button>
+                                </div>
+                                <div id="pipe-pagenum-opts" style="display:none; margin-top:6px; padding-top:6px; border-top:1px dashed #e2e8f0;">
+                                    <label class="tl-lb">Định dạng:</label>
+                                    <select id="tl-pipe-pn-fmt" class="tl-in">
+                                        <option value="{n}">1, 2, 3...</option>
+                                        <option value="{n}/{N}">1/10, 2/10...</option>
+                                        <option value="Trang {n}">Trang 1, Trang 2...</option>
+                                        <option value="- {n} -">- 1 -, - 2 -...</option>
+                                    </select>
+                                    <div class="tl-grid2">
+                                        <div>
+                                            <label class="tl-lb">Vị trí:</label>
+                                            <select id="tl-pipe-pn-pos" class="tl-in">
+                                                <option value="bc" selected>Dưới, giữa</option>
+                                                <option value="br">Dưới, phải</option>
+                                                <option value="tc">Trên, giữa</option>
+                                                <option value="tr">Trên, phải</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label class="tl-lb">Cỡ chữ (pt):</label>
+                                            <input type="number" id="tl-pipe-pn-size" class="tl-in" value="11">
+                                        </div>
+                                    </div>
+                                    <div class="tl-grid2">
+                                        <div><label class="tl-lb">Từ trang:</label><input type="number" id="tl-pipe-pn-from" class="tl-in" value="1"></div>
+                                        <div><label class="tl-lb">Số đầu:</label><input type="number" id="tl-pipe-pn-start" class="tl-in" value="1"></div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Bước 4: Chèn Watermark -->
+                            <div class="tl-card-sub" style="border:1px solid #cbd5e1; border-radius:6px; padding:8px 10px; background:#fff;">
+                                <div style="display:flex; justify-content:space-between; align-items:center;">
+                                    <label class="tl-ck" style="font-weight:600; margin:0; cursor:pointer;">
+                                        <input type="checkbox" id="tl-pipe-watermark-en"> 4. 💧 Chèn Watermark
+                                    </label>
+                                    <button type="button" class="btn btn-small" onclick="togglePipeOpt('pipe-wm-opts', this)" style="width:auto; padding:1px 6px; font-size:10px;">⚙️ Tùy chọn</button>
+                                </div>
+                                <div id="pipe-wm-opts" style="display:none; margin-top:6px; padding-top:6px; border-top:1px dashed #e2e8f0;">
+                                    <label class="tl-lb">Nội dung chữ:</label>
+                                    <input type="text" id="tl-pipe-wm-text" class="tl-in" value="BẢN SAO">
+                                    <div class="tl-grid2">
+                                        <div><label class="tl-lb">Cỡ chữ:</label><input type="number" id="tl-pipe-wm-size" class="tl-in" value="60"></div>
+                                        <div><label class="tl-lb">Độ mờ (%):</label><input type="number" id="tl-pipe-wm-op" class="tl-in" value="25"></div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Bước 5: Nén PDF -->
+                            <div class="tl-card-sub" style="border:1px solid #cbd5e1; border-radius:6px; padding:8px 10px; background:#fff;">
+                                <div style="display:flex; justify-content:space-between; align-items:center;">
+                                    <label class="tl-ck" style="font-weight:600; margin:0; cursor:pointer;">
+                                        <input type="checkbox" id="tl-pipe-compress-en"> 5. 🗜️ Nén PDF (Giảm dung lượng)
+                                    </label>
+                                    <button type="button" class="btn btn-small" onclick="togglePipeOpt('pipe-comp-opts', this)" style="width:auto; padding:1px 6px; font-size:10px;">⚙️ Tùy chọn</button>
+                                </div>
+                                <div id="pipe-comp-opts" style="display:none; margin-top:6px; padding-top:6px; border-top:1px dashed #e2e8f0;">
+                                    <label class="tl-lb">Mức nén:</label>
+                                    <select id="tl-pipe-comp-level" class="tl-in">
+                                        <option value="balanced" selected>Cân bằng (khuyên dùng)</option>
+                                        <option value="light">Nhẹ (giữ nét cao)</option>
+                                        <option value="strong">Mạnh (ảnh nhỏ hơn)</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <!-- Bước 6: Đặt mật khẩu -->
+                            <div class="tl-card-sub" style="border:1px solid #cbd5e1; border-radius:6px; padding:8px 10px; background:#fff;">
+                                <div style="display:flex; justify-content:space-between; align-items:center;">
+                                    <label class="tl-ck" style="font-weight:600; margin:0; cursor:pointer;">
+                                        <input type="checkbox" id="tl-pipe-protect-en"> 6. 🔒 Đặt mật khẩu bảo vệ
+                                    </label>
+                                    <button type="button" class="btn btn-small" onclick="togglePipeOpt('pipe-pw-opts', this)" style="width:auto; padding:1px 6px; font-size:10px;">⚙️ Tùy chọn</button>
+                                </div>
+                                <div id="pipe-pw-opts" style="display:none; margin-top:6px; padding-top:6px; border-top:1px dashed #e2e8f0;">
+                                    <label class="tl-lb">Mật khẩu mở file:</label>
+                                    <input type="password" id="tl-pipe-pw-user" class="tl-in" placeholder="Nhập mật khẩu">
+                                </div>
+                            </div>
+
+                        </div>
+                    </div>
 
                     <div class="tl-opts" data-tool="split">
                         <label class="tl-lb">Cách tách:</label>
@@ -829,6 +982,7 @@
                 <div class="card">
                     <p class="card-title">4. Thực hiện</p>
                     <button class="btn btn-success" id="tl-run-btn" disabled>▶ THỰC HIỆN</button>
+                    <button class="btn btn-warning" id="tl-chain-all-btn" style="display:none; background:#f59e0b; color:#fff;" title="Lấy tất cả file kết quả vừa tạo làm file nguồn để chọn tiếp thao tác khác">⚡ Dùng tất cả kết quả cho bước tiếp</button>
                     <button class="btn" id="tl-zip-btn" style="display:none;">📦 Tải tất cả (ZIP)</button>
                     <button class="btn btn-danger" id="tl-clear-btn" style="display:none;">🧹 Xóa danh sách</button>
                 </div>

@@ -7,6 +7,7 @@
     const P = () => window.PDFLib;
 
     const INFO = {
+        pipeline: { hint: 'Chạy chuỗi nhiều thao tác liên hoàn: Bỏ trang trắng ➔ Canh lề ➔ Đánh số ➔ Watermark ➔ Nén ➔ Mật khẩu chỉ trong 1 lần bấm!', accept: 'pdf' },
         split: { hint: 'Tách một file PDF thành nhiều file nhỏ theo khoảng trang, theo số trang hoặc từng trang.', accept: 'pdf' },
         margin: { hint: 'Canh chỉnh lề trái, phải, trên, dưới (chuẩn NĐ 30/2020 văn bản hành chính, đóng gáy sách in 2 mặt, luận văn hoặc tùy chỉnh).', accept: 'pdf' },
         blank: { hint: 'Tự động tìm và xóa các trang trắng (trang trống, trang chỉ có nhiễu scan) khỏi file PDF.', accept: 'pdf' },
@@ -217,6 +218,155 @@ self.onmessage = async (ev) => {
 
     // ---------- Các công cụ ----------
     const TOOLS = {};
+
+    window.togglePipeOpt = function(id, btn) {
+        const el = $(id);
+        if (!el) return;
+        const show = el.style.display === 'none';
+        el.style.display = show ? 'block' : 'none';
+        if (btn) btn.textContent = show ? '▲ Thu gọn' : '⚙️ Tùy chọn';
+    };
+    window.pipeApplyMarginPreset = function(val) {
+        const setM = (l, r, t, b, mir) => {
+            $('tl-pipe-mg-left').value = l;
+            $('tl-pipe-mg-right').value = r;
+            $('tl-pipe-mg-top').value = t;
+            $('tl-pipe-mg-bottom').value = b;
+            $('tl-pipe-mg-mirror').checked = mir;
+        };
+        if (val === 'nd30') setM(30, 15, 20, 20, false);
+        else if (val === 'book') setM(30, 15, 20, 20, true);
+        else if (val === 'thesis') setM(35, 20, 20, 20, false);
+        else if (val === 'equal15') setM(15, 15, 15, 15, false);
+        else if (val === 'equal20') setM(20, 20, 20, 20, false);
+    };
+
+    TOOLS.pipeline = {
+        read() {
+            const steps = [];
+            if ($('tl-pipe-blank-en').checked) {
+                steps.push({
+                    id: 'blank',
+                    name: 'Bỏ trang trắng',
+                    opts: {
+                        level: $('tl-pipe-blank-sens').value,
+                        margin: Math.max(0, Math.min(40, +$('tl-pipe-blank-margin').value || 0))
+                    }
+                });
+            }
+            if ($('tl-pipe-margin-en').checked) {
+                const toPt = v => Math.max(0, parseFloat(v) || 0) * 72 / 25.4;
+                steps.push({
+                    id: 'margin',
+                    name: 'Canh lề trang',
+                    opts: {
+                        left: toPt($('tl-pipe-mg-left').value),
+                        right: toPt($('tl-pipe-mg-right').value),
+                        top: toPt($('tl-pipe-mg-top').value),
+                        bottom: toPt($('tl-pipe-mg-bottom').value),
+                        mode: 'scale',
+                        mirror: $('tl-pipe-mg-mirror').checked,
+                        align: 'center',
+                        scope: 'all',
+                        pagesStr: '',
+                        unit: 'mm'
+                    }
+                });
+            }
+            if ($('tl-pipe-pagenum-en').checked) {
+                steps.push({
+                    id: 'pagenum',
+                    name: 'Đánh số trang',
+                    opts: {
+                        fmt: $('tl-pipe-pn-fmt').value,
+                        pos: $('tl-pipe-pn-pos').value,
+                        size: +$('tl-pipe-pn-size').value || 11,
+                        color: '#333333',
+                        from: Math.max(1, parseInt($('tl-pipe-pn-from').value, 10) || 1),
+                        start: parseInt($('tl-pipe-pn-start').value, 10) || 0,
+                        margin: 10 * 72 / 25.4
+                    }
+                });
+            }
+            if ($('tl-pipe-watermark-en').checked) {
+                const txt = $('tl-pipe-wm-text').value.trim();
+                if (!txt) throw new Error('Hãy nhập nội dung chữ cho Watermark trong chuỗi.');
+                steps.push({
+                    id: 'watermark',
+                    name: 'Chèn Watermark',
+                    opts: {
+                        type: 'text',
+                        text: txt,
+                        size: +$('tl-pipe-wm-size').value || 60,
+                        color: '#c42b2b',
+                        bold: true,
+                        op: Math.max(0.05, Math.min(1, (+$('tl-pipe-wm-op').value || 25) / 100)),
+                        rot: 45,
+                        pos: 'center',
+                        pages: '',
+                        imgw: 40,
+                        imgFile: null
+                    }
+                });
+            }
+            if ($('tl-pipe-compress-en').checked) {
+                steps.push({
+                    id: 'compress',
+                    name: 'Nén PDF',
+                    opts: {
+                        level: $('tl-pipe-comp-level').value
+                    }
+                });
+            }
+            if ($('tl-pipe-protect-en').checked) {
+                const userPw = $('tl-pipe-pw-user').value;
+                if (!userPw) throw new Error('Hãy nhập mật khẩu cho bước bảo vệ PDF trong chuỗi.');
+                steps.push({
+                    id: 'protect',
+                    name: 'Đặt mật khẩu',
+                    opts: {
+                        mode: 'set',
+                        user: userPw,
+                        owner: '',
+                        print: true,
+                        copy: true,
+                        edit: false
+                    }
+                });
+            }
+            if (!steps.length) throw new Error('Hãy tích chọn ít nhất 1 bước trong chuỗi thao tác.');
+            return { steps };
+        },
+        async run(it, o) {
+            let curBytes = it.bytes;
+            let curName = it.name;
+            const totalSteps = o.steps.length;
+            const appliedSteps = [];
+
+            for (let sIdx = 0; sIdx < totalSteps; sIdx++) {
+                const step = o.steps[sIdx];
+                setProgress(((sIdx) / totalSteps) * 100, `${it.name}: Đang ${step.name} (${sIdx + 1}/${totalSteps})...`);
+
+                const rawBuf = curBytes instanceof Uint8Array ? curBytes.buffer.slice(curBytes.byteOffset, curBytes.byteOffset + curBytes.byteLength) : curBytes;
+                const tempIt = {
+                    name: curName,
+                    bytes: rawBuf,
+                    enc: false
+                };
+
+                const outs = await TOOLS[step.id].run(tempIt, step.opts);
+                if (outs && outs.length && outs[0].data) {
+                    const outData = outs[0].data;
+                    curBytes = outData instanceof Uint8Array ? outData : new Uint8Array(await outData.arrayBuffer());
+                    appliedSteps.push(step.name);
+                }
+                await new Promise(r => setTimeout(r, 0));
+            }
+
+            it.note = 'Đã hoàn thành chuỗi: ' + appliedSteps.join(' ➔ ');
+            return [{ name: baseName(it.name) + '_hoanthanh.pdf', data: curBytes }];
+        }
+    };
 
     TOOLS.split = {
         read() {
@@ -1006,7 +1156,20 @@ self.onmessage = async (ev) => {
         if (!arr.length) { alert(kind === 'img' ? 'Chỉ nhận file ảnh (JPG, PNG, WebP, GIF, BMP).' : 'Chỉ nhận file PDF.'); return; }
         const list = lists[kind === 'img' ? 'img' : 'pdf'];
         for (const f of arr) {
-            const it = { id: ++seq, file: f, name: f.name, size: f.size, bytes: await f.arrayBuffer(), outs: [], err: null, note: '' };
+            const bytes = await f.arrayBuffer();
+            const it = {
+                id: ++seq,
+                file: f,
+                name: f.name,
+                size: f.size,
+                bytes: bytes,
+                origBytes: bytes.slice(0),
+                history: [],
+                selected: true,
+                outs: [],
+                err: null,
+                note: ''
+            };
             if (kind === 'pdf') {
                 try {
                     const doc = await openPdfJs(it);
@@ -1040,6 +1203,88 @@ self.onmessage = async (ev) => {
         const m = it.meta;
         [['title', 'Title'], ['author', 'Author'], ['subject', 'Subject'], ['keywords', 'Keywords'], ['creator', 'Creator'], ['producer', 'Producer']].forEach(([k, f]) => { $('tl-meta-' + k).value = m[f] || ''; });
     }
+
+    async function chainSingleOutput(id, j) {
+        const list = curList();
+        const it = list.find(x => x.id === id);
+        if (!it || !it.outs[j]) return;
+        const o = it.outs[j];
+        if (!/\.pdf$/i.test(o.name)) {
+            alert('Chỉ chuyển tiếp thao tác được với file PDF.');
+            return;
+        }
+        const outBytes = o.data instanceof Uint8Array ? o.data : new Uint8Array(await o.data.arrayBuffer());
+        it.bytes = outBytes;
+        it.size = outBytes.byteLength;
+        it.name = o.name;
+        try {
+            const doc = await openPdfJs(it);
+            it.pages = doc.numPages;
+            doc.destroy();
+        } catch (e) {}
+        const actionLabel = {
+            blank: 'Bỏ trang trắng', margin: 'Canh lề', pagenum: 'Đánh số trang',
+            watermark: 'Watermark', compress: 'Nén PDF', protect: 'Mật khẩu', pipeline: 'Chuỗi liên hoàn'
+        }[tool] || tool;
+        it.history = (it.history || []).concat(actionLabel);
+        it.outs = [];
+        it.note = 'Đã cập nhật file! Sẵn sàng cho thao tác tiếp theo.';
+        mgThumbCanvas = null;
+        renderMarginPreview();
+        render();
+        if (window.toast) window.toast(`Đã cập nhật ${it.name}! Bạn có thể chọn tiếp công cụ khác.`, 'success');
+    }
+
+    async function chainAllOutputs() {
+        const list = curList();
+        const targets = list.filter(it => it.outs && it.outs.length && /\.pdf$/i.test(it.outs[0].name));
+        if (!targets.length) return;
+        const actionLabel = {
+            blank: 'Bỏ trang trắng', margin: 'Canh lề', pagenum: 'Đánh số trang',
+            watermark: 'Watermark', compress: 'Nén PDF', protect: 'Mật khẩu', pipeline: 'Chuỗi liên hoàn'
+        }[tool] || tool;
+        for (const it of targets) {
+            const o = it.outs[0];
+            const outBytes = o.data instanceof Uint8Array ? o.data : new Uint8Array(await o.data.arrayBuffer());
+            it.bytes = outBytes;
+            it.size = outBytes.byteLength;
+            it.name = o.name;
+            try {
+                const doc = await openPdfJs(it);
+                it.pages = doc.numPages;
+                doc.destroy();
+            } catch (e) {}
+            it.history = (it.history || []).concat(actionLabel);
+            it.outs = [];
+            it.note = 'Đã cập nhật file! Sẵn sàng cho thao tác tiếp theo.';
+        }
+        mgThumbCanvas = null;
+        renderMarginPreview();
+        render();
+        if (window.toast) window.toast(`Đã chuyển tiếp ${targets.length} file! Bạn có thể chọn công cụ tiếp theo.`, 'success');
+        else alert(`Đã cập nhật ${targets.length} file làm file nguồn! Bạn có thể chọn công cụ khác và tiếp tục.`);
+    }
+
+    async function revertSingleFile(id) {
+        const list = curList();
+        const it = list.find(x => x.id === id);
+        if (!it || !it.origBytes) return;
+        it.bytes = it.origBytes.slice(0);
+        it.size = it.bytes.byteLength;
+        it.history = [];
+        it.outs = [];
+        it.note = 'Đã khôi phục file gốc ban đầu.';
+        try {
+            const doc = await openPdfJs(it);
+            it.pages = doc.numPages;
+            doc.destroy();
+        } catch (e) {}
+        mgThumbCanvas = null;
+        renderMarginPreview();
+        render();
+        if (window.toast) window.toast('Đã khôi phục về file gốc ban đầu.', 'info');
+    }
+
     function render() {
         const list = curList(), kind = INFO[tool].accept;
         $('tl-list-title').textContent = kind === 'img' ? 'DANH SÁCH ẢNH' : 'DANH SÁCH FILE PDF';
@@ -1047,30 +1292,94 @@ self.onmessage = async (ev) => {
         if (!list.length) {
             box.innerHTML = '<div style="color:gray; font-style:italic; text-align:center; padding-top:40px;">Chưa chọn file nào. Kéo thả ' + (kind === 'img' ? 'ảnh' : 'PDF') + ' vào đây hoặc bấm nút chọn file.</div>';
         } else {
-            box.innerHTML = list.map((it, i) => {
-                const outs = it.outs.filter(o => !o.skipDownload || true).map((o, j) => '<a href="#" data-dl="' + it.id + ':' + j + '" style="margin-right:10px; font-size:12px;">⬇ ' + esc(o.name) + ' (' + fmtBytes(o.data.size !== undefined ? o.data.size : o.data.length) + ')</a>').join('');
-                const thumb = it.url ? '<img src="' + it.url + '" style="width:44px; height:44px; object-fit:cover; border-radius:4px; margin-right:10px;">' : '<span style="font-size:22px; margin-right:10px;">📄</span>';
-                const mv = kind === 'img' ? '<button class="btn" data-mv="' + it.id + ':-1" style="width:auto; padding:2px 8px; margin:0 2px;" title="Lên">↑</button><button class="btn" data-mv="' + it.id + ':1" style="width:auto; padding:2px 8px; margin:0 2px;" title="Xuống">↓</button>' : '';
+            const selCount = list.filter(x => x.selected !== false).length;
+            const allChecked = selCount === list.length;
+            const canChainCount = list.filter(it => it.outs && it.outs.length && /\.pdf$/i.test(it.outs[0].name)).length;
+            const chainBannerHtml = canChainCount > 0 ? `
+                <div style="background:#eff6ff; border:1px solid #bfdbfe; border-radius:6px; padding:8px 12px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+                    <div style="font-size:12px; color:#1e40af; line-height:1.4;">
+                        🎉 <b>Đã có kết quả mới!</b> Muốn tiếp tục thao tác khác trên chính file này (Canh lề, Bỏ trang trắng, Đánh số, Nén...)?
+                    </div>
+                    <div style="display:flex; gap:6px;">
+                        <button type="button" class="btn btn-warning btn-small" id="tl-quick-chain-all" style="background:#f59e0b; color:#fff; font-size:11px; font-weight:700; padding:3px 10px; border-radius:4px;" title="Cập nhật toàn bộ file kết quả làm file nguồn cho thao tác tiếp theo">⚡ Dùng tiếp tất cả (${canChainCount} file)</button>
+                    </div>
+                </div>
+            ` : '';
+
+            const headerHtml = `
+                <div style="display:flex; justify-content:space-between; align-items:center; padding:6px 10px; background:var(--bg-card, #f8fafc); border:1px solid #cbd5e1; border-radius:6px; margin-bottom:8px; font-size:12px;" class="tl-card-sub">
+                    <label style="cursor:pointer; display:flex; align-items:center; gap:6px; font-weight:600; margin:0;">
+                        <input type="checkbox" id="tl-chk-all" ${allChecked ? 'checked' : ''}> Chọn tất cả (${list.length} file)
+                    </label>
+                    <span style="color:#64748b;">Đã chọn: <b style="color:var(--primary);">${selCount}</b>/${list.length} file</span>
+                </div>
+            `;
+
+            const rowsHtml = list.map((it, i) => {
+                const isChecked = it.selected !== false;
+                const outs = (it.outs || []).map((o, j) => {
+                    const isPdf = /\.pdf$/i.test(o.name);
+                    const chainBtn = isPdf ? `<button type="button" class="btn btn-warning btn-small" data-chain="${it.id}:${j}" style="width:auto; padding:2px 8px; font-size:11px; background:#f59e0b; color:#fff; font-weight:600;" title="Dùng kết quả này làm file nguồn để chọn tiếp thao tác khác (Canh lề, Bỏ trang trắng, Đánh số...)">⚡ Dùng tiếp</button>` : '';
+                    const sendEditorBtn = isPdf ? `<button type="button" class="btn btn-small" data-send-editor="${it.id}:${j}" style="width:auto; padding:2px 8px; font-size:11px; background:#10b981; color:#fff;" title="Mở file này trong Chỉnh Sửa PDF (thanh Ribbon kiểu Word)">✏️ Sửa (Word)</button>` : '';
+                    const sendSignBtn = isPdf ? `<button type="button" class="btn btn-small" data-send-sign="${it.id}:${j}" style="width:auto; padding:2px 8px; font-size:11px; background:#0284c7; color:#fff;" title="Chuyển file này sang tab Ký tên để ký hoặc chèn chữ ký">✍️ Ký tên</button>` : '';
+                    const sendMainBtn = isPdf ? `<button type="button" class="btn btn-small" data-send-main="${it.id}:${j}" style="width:auto; padding:2px 8px; font-size:11px; background:#475569; color:#fff;" title="Chuyển file này sang tab Xoay & Sắp xếp">↻ Xoay/Xếp</button>` : '';
+                    return `<div style="display:inline-flex; align-items:center; gap:6px; margin-top:4px; padding:3px 8px; background:#f1f5f9; border-radius:4px; border:1px solid #cbd5e1; flex-wrap:wrap; margin-right:6px;">
+                        <a href="#" data-dl="${it.id}:${j}" style="font-size:12px; font-weight:700; color:var(--primary); text-decoration:none;">⬇ ${esc(o.name)} (${fmtBytes(o.data.size !== undefined ? o.data.size : o.data.length)})</a>
+                        ${chainBtn}
+                        ${sendEditorBtn}
+                        ${sendSignBtn}
+                        ${sendMainBtn}
+                    </div>`;
+                }).join('');
+
+                const historyBadges = (it.history && it.history.length)
+                    ? `<div style="margin-top:2px; font-size:11px; color:#0284c7; display:flex; align-items:center; gap:4px; flex-wrap:wrap;">
+                         <span style="font-weight:600;">Chuỗi đã xử lý:</span>
+                         ${it.history.map(h => `<span style="background:#e0f2fe; padding:1px 5px; border-radius:3px; border:1px solid #bae6fd; font-weight:500;">✔ ${esc(h)}</span>`).join(' ➔ ')}
+                         <button type="button" class="btn btn-small" data-revert="${it.id}" style="width:auto; padding:1px 6px; font-size:10px; margin-left:4px;" title="Khôi phục file ban đầu khi chưa qua các bước này">↩ Về file gốc</button>
+                       </div>`
+                    : '';
+
+                const chkBox = `<input type="checkbox" data-chk="${it.id}" ${isChecked ? 'checked' : ''} style="margin-right:8px; cursor:pointer;" title="Chọn file này">`;
+                const thumb = it.url ? '<img src="' + it.url + '" style="width:44px; height:44px; object-fit:cover; border-radius:4px; margin-right:10px;">' : '<span style="font-size:22px; margin-right:8px;">📄</span>';
+                const mv = kind === 'img' ? '<button type="button" class="btn" data-mv="' + it.id + ':-1" style="width:auto; padding:2px 8px; margin:0 2px;" title="Lên">↑</button><button type="button" class="btn" data-mv="' + it.id + ':1" style="width:auto; padding:2px 8px; margin:0 2px;" title="Xuống">↓</button>' : '';
                 const pw = it.enc && tool !== 'protect' ? '<div style="color:#c42b2b; font-size:12px; margin-top:2px;">File có mật khẩu: hãy dùng "Đặt / gỡ mật khẩu" → Gỡ mật khẩu trước.</div>' : '';
-                return '<div class="tl-row">' + thumb +
+
+                return '<div class="tl-row" style="' + (isChecked ? '' : 'opacity:0.6;') + '">' +
+                    chkBox + thumb +
                     '<div style="flex:1; min-width:0;"><div style="font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">' + esc(it.name) + '</div>' +
                     '<div style="font-size:12px; color:#666;">' + fmtBytes(it.size) + (kind === 'pdf' ? ' · ' + (it.pages || '?') + ' trang' : '') + (it.enc ? ' · 🔒 có mật khẩu' : '') + '</div>' +
+                    historyBadges +
                     pw + (it.err ? '<div style="color:#c42b2b; font-size:12px; margin-top:2px;">⚠ ' + esc(it.err) + '</div>' : '') +
                     (it.note ? '<div style="color:#178a4c; font-size:12px; margin-top:2px;">✔ ' + esc(it.note) + '</div>' : '') +
-                    (outs ? '<div style="margin-top:3px;">' + outs + '</div>' : '') + '</div>' + mv +
-                    '<button class="btn btn-danger" data-rm="' + it.id + '" style="width:auto; padding:2px 8px; margin:0 0 0 4px;" title="Bỏ khỏi danh sách">✕</button></div>';
+                    (outs ? '<div style="margin-top:4px; display:flex; flex-wrap:wrap; align-items:center;">' + outs + '</div>' : '') + '</div>' + mv +
+                    '<button type="button" class="btn btn-danger" data-rm="' + it.id + '" style="width:auto; padding:2px 8px; margin:0 0 0 4px;" title="Bỏ khỏi danh sách">✕</button></div>';
             }).join('');
+
+            box.innerHTML = chainBannerHtml + headerHtml + rowsHtml;
         }
-        const hasOut = lists.pdf.concat(lists.img).some(it => it.outs.length);
-        $('tl-run-btn').disabled = busy || !list.length;
+
+        const hasOut = lists.pdf.concat(lists.img).some(it => it.outs && it.outs.length);
+        const selCount = list.filter(x => x.selected !== false).length;
+        $('tl-run-btn').disabled = busy || !selCount;
         $('tl-clear-btn').style.display = list.length ? '' : 'none';
-        $('tl-zip-btn').style.display = list.some(it => it.outs.length) && hasOut ? '' : 'none';
+        $('tl-zip-btn').style.display = list.some(it => it.outs && it.outs.length) && hasOut ? '' : 'none';
+
+        const chainAllBtn = $('tl-chain-all-btn');
+        if (chainAllBtn) {
+            const canChainAll = list.some(it => it.outs && it.outs.length && /\.pdf$/i.test(it.outs[0].name));
+            chainAllBtn.style.display = canChainAll ? '' : 'none';
+        }
     }
 
     async function run() {
         if (busy) return;
-        const list = curList();
-        if (!list.length) return;
+        const allList = curList();
+        const list = allList.filter(it => it.selected !== false);
+        if (!list.length) {
+            alert('Hãy tích chọn ít nhất 1 file trong danh sách để thực hiện.');
+            return;
+        }
         let opts;
         try { opts = TOOLS[tool].read(); } catch (e) { alert(e.message); return; }
         const T = TOOLS[tool];
@@ -1341,15 +1650,111 @@ self.onmessage = async (ev) => {
         drop.addEventListener('dragover', e => { e.preventDefault(); drop.style.outline = '2px dashed var(--primary)'; });
         drop.addEventListener('dragleave', () => { drop.style.outline = ''; });
         drop.addEventListener('drop', e => { e.preventDefault(); drop.style.outline = ''; if (e.dataTransfer.files.length) addFiles(e.dataTransfer.files); });
-        $('tl-list').addEventListener('click', e => {
-            const t = e.target.closest('[data-rm],[data-mv],[data-dl]');
+        $('tl-list').addEventListener('click', async e => {
+            const quickChain = e.target.closest('#tl-quick-chain-all');
+            if (quickChain) {
+                e.preventDefault();
+                await chainAllOutputs();
+                return;
+            }
+            const t = e.target.closest('[data-rm],[data-mv],[data-dl],[data-chain],[data-revert],[data-send-editor],[data-send-sign],[data-send-main]');
             if (!t) return;
             e.preventDefault();
             const list = curList();
-            if (t.dataset.rm) { const i = list.findIndex(x => x.id === +t.dataset.rm); if (i >= 0) { list[i].url && URL.revokeObjectURL(list[i].url); list.splice(i, 1); if (!list.length) { mgThumbCanvas = null; renderMarginPreview(); } render(); } }
-            else if (t.dataset.mv) { const [id, d] = t.dataset.mv.split(':').map(Number); const i = list.findIndex(x => x.id === id), j = i + d; if (i >= 0 && j >= 0 && j < list.length) { const x = list[i]; list[i] = list[j]; list[j] = x; render(); } }
-            else if (t.dataset.dl) { const [id, j] = t.dataset.dl.split(':').map(Number); const it = list.find(x => x.id === id); if (it && it.outs[j]) saveBlob(toBlob(it.outs[j].data, it.outs[j].name), it.outs[j].name); }
+            if (t.dataset.rm) {
+                const i = list.findIndex(x => x.id === +t.dataset.rm);
+                if (i >= 0) {
+                    list[i].url && URL.revokeObjectURL(list[i].url);
+                    list.splice(i, 1);
+                    if (!list.length) { mgThumbCanvas = null; renderMarginPreview(); }
+                    render();
+                }
+            }
+            else if (t.dataset.mv) {
+                const [id, d] = t.dataset.mv.split(':').map(Number);
+                const i = list.findIndex(x => x.id === id), j = i + d;
+                if (i >= 0 && j >= 0 && j < list.length) {
+                    const x = list[i]; list[i] = list[j]; list[j] = x; render();
+                }
+            }
+            else if (t.dataset.dl) {
+                const [id, j] = t.dataset.dl.split(':').map(Number);
+                const it = list.find(x => x.id === id);
+                if (it && it.outs[j]) saveBlob(toBlob(it.outs[j].data, it.outs[j].name), it.outs[j].name);
+            }
+            else if (t.dataset.chain) {
+                const [id, j] = t.dataset.chain.split(':').map(Number);
+                await chainSingleOutput(id, j);
+            }
+            else if (t.dataset.revert) {
+                const id = Number(t.dataset.revert);
+                await revertSingleFile(id);
+            }
+            else if (t.dataset.sendEditor) {
+                const [id, j] = t.dataset.sendEditor.split(':').map(Number);
+                const it = list.find(x => x.id === id);
+                if (it && it.outs && it.outs[j]) {
+                    const o = it.outs[j];
+                    const blob = toBlob(o.data, o.name);
+                    const file = new File([blob], o.name, { type: 'application/pdf' });
+                    if (window.loadFileIntoEditorTab) {
+                        await window.loadFileIntoEditorTab(file, o.name);
+                    } else {
+                        alert('Không tìm thấy tab Chỉnh Sửa PDF.');
+                    }
+                }
+            }
+            else if (t.dataset.sendSign) {
+                const [id, j] = t.dataset.sendSign.split(':').map(Number);
+                const it = list.find(x => x.id === id);
+                if (it && it.outs && it.outs[j]) {
+                    const o = it.outs[j];
+                    const blob = toBlob(o.data, o.name);
+                    const file = new File([blob], o.name, { type: 'application/pdf' });
+                    if (window.loadFileIntoSignTab) {
+                        await window.loadFileIntoSignTab(file, o.name);
+                    } else {
+                        alert('Không tìm thấy tab Ký tên.');
+                    }
+                }
+            }
+            else if (t.dataset.sendMain) {
+                const [id, j] = t.dataset.sendMain.split(':').map(Number);
+                const it = list.find(x => x.id === id);
+                if (it && it.outs && it.outs[j]) {
+                    const o = it.outs[j];
+                    const blob = toBlob(o.data, o.name);
+                    const file = new File([blob], o.name, { type: 'application/pdf' });
+                    if (window.loadFileIntoMainTab) {
+                        await window.loadFileIntoMainTab(file, o.name);
+                    } else {
+                        alert('Không tìm thấy tab Xoay & Sắp xếp.');
+                    }
+                }
+            }
         });
+
+        $('tl-list').addEventListener('change', e => {
+            if (e.target.id === 'tl-chk-all') {
+                const checked = e.target.checked;
+                curList().forEach(it => { it.selected = checked; });
+                render();
+            } else if (e.target.dataset.chk) {
+                const id = Number(e.target.dataset.chk);
+                const it = curList().find(x => x.id === id);
+                if (it) {
+                    it.selected = e.target.checked;
+                    render();
+                }
+            }
+        });
+
+        const chainAllBtn = $('tl-chain-all-btn');
+        if (chainAllBtn) {
+            chainAllBtn.addEventListener('click', async () => {
+                await chainAllOutputs();
+            });
+        }
         // Hiện/ẩn tuỳ chọn phụ
         $('tl-mg-preset').addEventListener('change', e => updateMarginPreset(e.target.value));
         $('tl-mg-unit').addEventListener('change', e => {
@@ -1431,4 +1836,12 @@ self.onmessage = async (ev) => {
     }
     init();
     window._tl = { TOOLS, lists, addFiles, run, selectTool, parseBookmarks };
+    window.loadFileIntoToolsTab = function(fileOrBlob, name, toolName = 'margin') {
+        const file = fileOrBlob instanceof File ? fileOrBlob : new File([fileOrBlob], name || 'tailieu.pdf', { type: 'application/pdf' });
+        addFiles([file]);
+        if (toolName) selectTool(toolName);
+        const toolsBtn = document.querySelector('.tab-btn[onclick*="tab-tools"], #nav-tools');
+        if (toolsBtn && window.switchTab) window.switchTab('tab-tools', toolsBtn);
+        if (window.toast) window.toast('Đã nạp file vào Công cụ PDF! Hãy chọn thao tác và thực hiện.', 'success');
+    };
 })();

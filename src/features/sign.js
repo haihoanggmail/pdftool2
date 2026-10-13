@@ -74,6 +74,7 @@ const HTML = `
       <button class="sg-btn sg-primary" id="sg-add">➕ Thêm vào trang</button>
       <button class="sg-btn" id="sg-all">📑 Nhân bản sang mọi trang</button>
       <button class="sg-btn sg-ok" id="sg-export">⬇️ Xuất PDF đã ký</button>
+      <button class="sg-btn" id="sg-to-tools" style="background:#f59e0b; color:#fff;" title="Chuyển file đã ký sang Công cụ PDF để canh lề, đánh số trang, nén hoặc chèn watermark">⚡ Chuyển sang Công cụ PDF</button>
     </div>
     <div class="sg-stage" id="sg-stage"><div class="sg-empty">Mở một file PDF để bắt đầu ký</div></div>
   </div>
@@ -229,6 +230,37 @@ export async function exportSigned() {
   finally { window.Progress?.hide(); }
 }
 
+export async function exportAndSendToTools() {
+  if (!st.pdf) return window.toast?.('Chưa có file PDF', 'error');
+  if (!st.ph.length) return window.toast?.('Chưa đặt chữ ký nào lên trang', 'error');
+  const { PDFDocument, degrees } = window.PDFLib;
+  try {
+    window.Progress?.show('Đang tạo PDF đã ký...', 5);
+    const doc = await PDFDocument.load(st.bytes, { ignoreEncryption: true }), emb = {};
+    let n = 0;
+    for (const p of st.ph) {
+      const sig = p.snap || st.sigs.find(s => s.id === p.sigId); if (!sig) continue;
+      if (!emb[sig.id]) emb[sig.id] = await doc.embedPng(sig.url);
+      const jp = await st.pdf.getPage(p.page), vp = jp.getViewport({ scale: 1 }), pg = doc.getPage(p.page - 1);
+      const w = p.fw * vp.width, h = w / sig.ar;
+      const [x, y] = vp.convertToPdfPoint(p.fx * vp.width, p.fy * vp.height + h);
+      pg.drawImage(emb[sig.id], { x, y, width: w, height: h, rotate: degrees(vp.rotation) });
+      window.Progress?.show('Đang tạo PDF đã ký...', 5 + 90 * (++n) / st.ph.length);
+    }
+    const out = await doc.save();
+    const fileName = (st.name || 'tailieu') + '-signed.pdf';
+    const blob = new Blob([out], { type: 'application/pdf' });
+    const file = new File([blob], fileName, { type: 'application/pdf' });
+    if (window.loadFileIntoToolsTab) {
+      window.loadFileIntoToolsTab(file, fileName, 'margin');
+      window.toast?.('Đã chuyển PDF đã ký sang Công cụ PDF! Bạn có thể canh lề, đánh số, nén...', 'success');
+    } else {
+      window.toast?.('Không tìm thấy tab Công cụ PDF', 'error');
+    }
+  } catch (e) { window.toast?.('Lỗi tạo PDF: ' + (e.message || e), 'error'); }
+  finally { window.Progress?.hide(); }
+}
+
 export function initSign() {
   if (!mount()) return;
   loadSigs(); setupSigMaker(); renderList();
@@ -239,6 +271,8 @@ export function initSign() {
   $('#sg-zin').onclick = () => { st.zoom = Math.min(3, st.zoom + 0.2); renderPage(); };
   $('#sg-zout').onclick = () => { st.zoom = Math.max(0.4, st.zoom - 0.2); renderPage(); };
   $('#sg-add').onclick = addToPage; $('#sg-all').onclick = duplicateAll; $('#sg-export').onclick = exportSigned;
+  const toToolsBtn = $('#sg-to-tools');
+  if (toToolsBtn) toToolsBtn.onclick = exportAndSendToTools;
   addEventListener('keydown', (e) => {
     if ((e.key === 'Delete' || e.key === 'Backspace') && st.sel && document.getElementById('tab-sign').classList.contains('active') && !/INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) {
       st.ph = st.ph.filter(x => x.id !== st.sel); st.sel = null; drawItems(st.holder);
@@ -246,4 +280,12 @@ export function initSign() {
   });
   // cho phép kéo thả PDF vào tab này (main.js xử lý chung qua input này)
   window.__signInput = $('#sg-pdf');
+  window.openPdfInSign = openPdf;
+  window.loadFileIntoSignTab = async function(fileOrBlob, name) {
+    const file = fileOrBlob instanceof File ? fileOrBlob : new File([fileOrBlob], name || 'tailieu.pdf', { type: 'application/pdf' });
+    await openPdf(file);
+    const signBtn = [...document.querySelectorAll('.tab-btn')].find(b => b.getAttribute('onclick')?.includes('tab-sign'));
+    if (signBtn && window.switchTab) window.switchTab('tab-sign', signBtn);
+    window.toast?.('Đã nạp file vào tab Ký tên', 'success');
+  };
 }

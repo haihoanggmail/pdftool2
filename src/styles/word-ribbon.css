@@ -1,0 +1,388 @@
+/* Microsoft Word style Ribbon Bar for PDF Editor */
+
+#tab-editor {
+  display: none;
+  flex-direction: column;
+  height: calc(100vh - 44px);
+  overflow: hidden;
+  background: #f3f4f6;
+}
+
+#tab-editor.active {
+  display: flex !important;
+}
+
+#tab-editor .editor-layout {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  width: 100%;
+  overflow: hidden;
+}
+
+/* Ribbon Container */
+.word-ribbon {
+  background: #ffffff;
+  border-bottom: 1px solid #d2d0ce;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  z-index: 50;
+  user-select: none;
+}
+
+/* Ribbon Tab Bar */
+.ribbon-tabs-bar {
+  display: flex;
+  align-items: center;
+  background: #f8f9fa;
+  border-bottom: 1px solid #e1dfdd;
+  padding: 2px 10px 0;
+  gap: 3px;
+  overflow-x: auto;
+}
+
+.ribbon-file-btn {
+  background: #0078d4;
+  color: #ffffff;
+  border: none;
+  border-radius: 4px 4px 0 0;
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: background 0.15s;
+  letter-spacing: 0.5px;
+}
+.ribbon-file-btn:hover {
+  background: #106ebe;
+}
+
+.ribbon-tab-btn {
+  background: transparent;
+  color: #323130;
+  border: none;
+  border-radius: 4px 4px 0 0;
+  padding: 7px 14px;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.ribbon-tab-btn:hover {
+  background: #edebe9;
+  color: #000000;
+}
+.ribbon-tab-btn.active {
+  background: #ffffff;
+  color: #0078d4;
+  font-weight: 700;
+  box-shadow: 0 -2px 0 0 #0078d4 inset;
+}
+.ribbon-tab-btn.highlight {
+  color: #d97706;
+}
+.ribbon-tab-btn.highlight.active {
+  color: #b45309;
+  box-shadow: 0 -2px 0 0 #d97706 inset;
+}
+
+.ribbon-right-tools {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-left: 12px;
+  white-space: nowrap;
+}
+
+.ribbon-doc-badge {
+  font-size: 12px;
+  color: #4b5563;
+  background: #e5e7eb;
+  padding: 3px 9px;
+  border-radius: 12px;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-weight: 500;
+}
+.ribbon-doc-badge.has-file {
+  background: #dcfce7;
+  color: #166534;
+  font-weight: 600;
+}
+
+/* Ribbon Panels Body */
+.ribbon-panels {
+  background: #ffffff;
+  min-height: 104px;
+  padding: 6px 12px;
+  box-sizing: border-box;
+  display: flex;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.ribbon-panel {
+  display: none;
+  align-items: stretch;
+  gap: 8px;
+  width: 100%;
+}
+.ribbon-panel.active {
+  display: flex;
+}
+
+/* Ribbon Groups */
+.ribbon-group {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  border-right: 1px solid #edebe9;
+  padding: 0 10px;
+  flex-shrink: 0;
+  box-sizing: border-box;
+}
+.ribbon-group:last-child {
+  border-right: none;
+}
+
+.ribbon-group-body {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+}
+
+.ribbon-group-title {
+  text-align: center;
+  font-size: 10px;
+  font-weight: 700;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  margin-top: 4px;
+}
+
+/* Large Action Buttons (Icon on top, Label on bottom) */
+.rb-btn-large {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 5px 8px;
+  min-width: 54px;
+  height: 72px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s;
+  color: #1f2937;
+  text-align: center;
+  line-height: 1.2;
+}
+.rb-btn-large .rb-icon {
+  font-size: 20px;
+  margin-bottom: 4px;
+}
+.rb-btn-large .rb-label {
+  font-size: 11px;
+  font-weight: 600;
+}
+.rb-btn-large:hover {
+  background: #f3f4f6;
+  border-color: #d1d5db;
+}
+.rb-btn-large.active {
+  background: #e0f2fe;
+  border-color: #0284c7;
+  color: #0369a1;
+}
+.rb-btn-large.primary-action {
+  background: #2563eb;
+  color: #ffffff;
+  border-color: #1d4ed8;
+  box-shadow: 0 2px 4px rgba(37, 99, 235, 0.2);
+}
+.rb-btn-large.primary-action:hover {
+  background: #1d4ed8;
+}
+.rb-btn-large.warning-action {
+  background: #d97706;
+  color: #ffffff;
+  border-color: #b45309;
+  box-shadow: 0 2px 4px rgba(217, 119, 6, 0.2);
+}
+.rb-btn-large.warning-action:hover {
+  background: #b45309;
+}
+.rb-btn-large.success-action {
+  background: #059669;
+  color: #ffffff;
+  border-color: #047857;
+  box-shadow: 0 2px 4px rgba(5, 150, 105, 0.2);
+}
+.rb-btn-large.success-action:hover {
+  background: #047857;
+}
+
+/* Compact Tool Rows */
+.rb-column {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  justify-content: center;
+}
+.rb-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.rb-btn-compact {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 8px;
+  font-size: 11.5px;
+  font-weight: 500;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  background: #ffffff;
+  color: #374151;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s;
+}
+.rb-btn-compact:hover {
+  background: #f9fafb;
+  border-color: #9ca3af;
+}
+.rb-btn-compact.active {
+  background: #e0f2fe;
+  border-color: #0284c7;
+  color: #0369a1;
+  font-weight: 600;
+}
+
+/* Preset Chips */
+.rb-presets-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 4px;
+}
+.rb-preset-chip {
+  padding: 3px 6px;
+  font-size: 11px;
+  font-weight: 500;
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  border-radius: 4px;
+  cursor: pointer;
+  text-align: left;
+  white-space: nowrap;
+  transition: all 0.15s;
+}
+.rb-preset-chip:hover {
+  background: #e0f2fe;
+  border-color: #38bdf8;
+  color: #0369a1;
+}
+
+/* Compact Inputs */
+.rb-input-num {
+  width: 46px;
+  height: 24px;
+  padding: 1px 4px;
+  font-size: 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 3px;
+  text-align: center;
+}
+.rb-input-text {
+  height: 25px;
+  padding: 2px 6px;
+  font-size: 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 3px;
+}
+.rb-select {
+  height: 26px;
+  padding: 2px 6px;
+  font-size: 11.5px;
+  border: 1px solid #d1d5db;
+  border-radius: 3px;
+  background: #ffffff;
+  color: #1f2937;
+}
+
+/* Digital Signature Modal */
+.rb-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.6);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+}
+.rb-modal-card {
+  background: #ffffff;
+  border-radius: 8px;
+  width: 520px;
+  max-width: 95vw;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.rb-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 18px;
+  background: #f8fafc;
+  border-bottom: 1px solid #e2e8f0;
+}
+.rb-modal-header h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: #0f172a;
+}
+.rb-modal-body {
+  padding: 16px 18px;
+}
+.rb-sig-canvas {
+  width: 100%;
+  height: 180px;
+  background: #f8fafc;
+  border: 2px dashed #cbd5e1;
+  border-radius: 6px;
+  cursor: crosshair;
+  touch-action: none;
+}
+.rb-modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 12px 18px;
+  background: #f8fafc;
+  border-top: 1px solid #e2e8f0;
+}

@@ -2077,6 +2077,7 @@ async function editorLoadFile(input) {
             document.getElementById('editor-download-btn').disabled = false;
             initDrawCanvasEvents();
             await editorRenderPage();
+            if (typeof window.onEditorDocLoaded === 'function') window.onEditorDocLoaded();
         } catch (e) {
             alert("Lỗi phân tích cú pháp PDF: " + e.message);
         }
@@ -3869,4 +3870,105 @@ function printEditorPages(pageNumbers) {
 function printEditorStage() {
     printEditorPages([ editorPage ]);
 }
+
+window.loadFileIntoMainTab = async function(fileOrBlob, name) {
+    try {
+        const file = fileOrBlob instanceof File ? fileOrBlob : new File([fileOrBlob], name || 'tailieu.pdf', { type: 'application/pdf' });
+        const dt = new DataTransfer();
+        dt.items.add(file);
+        const inp = document.getElementById('file-input');
+        if (inp) {
+            inp.files = dt.files;
+            await loadPDF(inp);
+            const mainTabBtn = document.querySelector('.tab-btn[onclick*="tab-main"]');
+            if (mainTabBtn && window.switchTab) window.switchTab('tab-main', mainTabBtn);
+            if (window.toast) window.toast('Đã nạp file vào tab Xoay & Sắp xếp', 'success');
+        }
+    } catch (e) {
+        alert('Lỗi nạp file vào tab Xoay & Sắp xếp: ' + e.message);
+    }
+};
+
+// ===================== Word Ribbon & Cross-Tab Editor Support =====================
+window.getEditorPdfBytes = function() { return editorPdfDataBytes; };
+window.getEditorPdfDoc = function() { return editorPdfJsDoc; };
+window.getEditorPage = function() { return editorPage; };
+window.setEditorPage = function(p) { editorPage = p; };
+window.getEditorFileName = function() { return editorFileName; };
+window.setEditorFileName = function(n) { editorFileName = n; };
+
+window.editorLoadBytes = async function(bytes, fileName, preservePage = false) {
+    if (!bytes) return;
+    const arrayBuffer = bytes.buffer ? bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) : bytes.slice(0);
+    editorPdfDataBytes = arrayBuffer;
+    if (fileName) {
+        editorFileName = fileName.replace(/\.pdf$/i, '');
+    }
+    modifiedTexts = [];
+    modifiedImages = [];
+    editorShapes = [];
+    addedTexts = [];
+    const prevPage = editorPage || 1;
+    resetHistory();
+    updateZoomLabel();
+    try {
+        editorPdfJsDoc = await pdfjsLib.getDocument({
+            data: new Uint8Array(editorPdfDataBytes.slice(0))
+        }).promise;
+        if (preservePage && prevPage <= editorPdfJsDoc.numPages) {
+            editorPage = prevPage;
+        } else {
+            editorPage = Math.min(prevPage, editorPdfJsDoc.numPages || 1);
+        }
+        const statusEl = document.getElementById('editor-file-status');
+        if (statusEl) {
+            statusEl.innerText = '✓ ' + (editorFileName ? editorFileName + '.pdf' : 'Tài liệu PDF');
+            statusEl.style.color = 'var(--success)';
+        }
+        const emptyEl = document.getElementById('editor-empty');
+        if (emptyEl) emptyEl.style.display = 'none';
+        const shellEl = document.getElementById('editor-page-shell');
+        if (shellEl) shellEl.style.display = 'inline-block';
+        const dlBtn = document.getElementById('editor-download-btn');
+        if (dlBtn) dlBtn.disabled = false;
+        initDrawCanvasEvents();
+        await editorRenderPage();
+        if (typeof window.onEditorDocLoaded === 'function') {
+            window.onEditorDocLoaded();
+        }
+    } catch (e) {
+        console.error("Lỗi nạp PDF vào editor:", e);
+        if (window.toast) window.toast("Lỗi tải PDF: " + e.message, "error");
+        else alert("Lỗi tải PDF: " + e.message);
+    }
+};
+
+window.loadFileIntoEditorTab = async function(fileOrBlob, name) {
+    try {
+        const buf = fileOrBlob instanceof Blob ? await fileOrBlob.arrayBuffer() : fileOrBlob;
+        await window.editorLoadBytes(buf, name || 'tailieu.pdf');
+        const editorTabBtn = document.querySelector('.tab-btn[onclick*="tab-editor"]');
+        if (editorTabBtn && window.switchTab) window.switchTab('tab-editor', editorTabBtn);
+        if (window.toast) window.toast('Đã mở tài liệu trong Chỉnh Sửa PDF', 'success');
+    } catch (e) {
+        alert('Lỗi nạp file vào tab Chỉnh sửa: ' + e.message);
+    }
+};
+
+window.getEditorCurrentPdfBytes = async function() {
+    if (!editorPdfDataBytes) return null;
+    const hasCanvasEdits = (modifiedTexts && modifiedTexts.length > 0) ||
+                           (addedTexts && addedTexts.length > 0) ||
+                           (editorShapes && editorShapes.length > 0) ||
+                           (modifiedImages && modifiedImages.length > 0);
+    if (!hasCanvasEdits) {
+        return new Uint8Array(editorPdfDataBytes.slice(0));
+    }
+    return new Promise((resolve) => {
+        editorExportPDF(bytes => {
+            resolve(bytes);
+        });
+    });
+};
+
 
