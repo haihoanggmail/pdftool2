@@ -198,7 +198,7 @@ async function exportPdf() {
 }
 
 export function initRedact() {
-  if (!addTab('tab-redact', '⬛ Che thông tin', HTML)) return;
+  if (!addTab('tab-redact', '🛡️ Che thông tin', HTML, { addToNav: false })) return;
   $('#rd-presets').innerHTML = Object.entries(PRESETS).map(([k, v]) => `<label class="rd-chk"><input type="checkbox" value="${k}"> ${v.label}</label>`).join('');
   $('#rd-open').onclick = () => $('#rd-pdf').click();
   $('#rd-pdf').onchange = (e) => { if (e.target.files[0]) openPdf(e.target.files[0]); e.target.value = ''; };

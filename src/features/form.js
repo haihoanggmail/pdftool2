@@ -131,7 +131,7 @@ async function exportPdf() {
 }
 
 export function initForm() {
-  if (!addTab('tab-form', '📝 Điền form', HTML)) return;
+  if (!addTab('tab-form', '📝 Điền form', HTML, { addToNav: false })) return;
   $('#fm-open').onclick = () => $('#fm-pdf').click();
   $('#fm-pdf').onchange = (e) => { if (e.target.files[0]) openPdf(e.target.files[0]); e.target.value = ''; };
   $('#fm-search').oninput = renderFields; $('#fm-refresh').onclick = refresh; $('#fm-export').onclick = exportPdf;

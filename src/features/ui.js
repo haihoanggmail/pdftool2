@@ -2,15 +2,20 @@
 export const $ = (s, r = document) => r.querySelector(s);
 
 // Thêm một tab mới (nút + vùng nội dung) ngay trước tab "Giới thiệu"
-export function addTab(id, label, html) {
+export function addTab(id, label, html, { addToNav = true } = {}) {
   const aboutTab = document.getElementById('tab-about');
-  const aboutBtn = [...document.querySelectorAll('.tab-btn')].find((b) => b.getAttribute('onclick')?.includes('tab-about'));
-  if (!aboutTab || !aboutBtn) return null;
+  if (!aboutTab) return null;
   const sec = Object.assign(document.createElement('div'), { id, className: 'tab-content', innerHTML: html });
   aboutTab.parentNode.insertBefore(sec, aboutTab);
-  const btn = Object.assign(document.createElement('button'), { className: 'tab-btn', textContent: label });
-  btn.setAttribute('onclick', `switchTab('${id}', this)`);
-  aboutBtn.parentNode.insertBefore(btn, aboutBtn);
+
+  if (addToNav) {
+    const aboutBtn = [...document.querySelectorAll('.tab-btn')].find((b) => b.getAttribute('onclick')?.includes('tab-about'));
+    if (aboutBtn) {
+      const btn = Object.assign(document.createElement('button'), { className: 'tab-btn', textContent: label });
+      btn.setAttribute('onclick', `switchTab('${id}', this)`);
+      aboutBtn.parentNode.insertBefore(btn, aboutBtn);
+    }
+  }
   return sec;
 }
 

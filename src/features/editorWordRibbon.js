@@ -51,7 +51,7 @@ function buildRibbonHTML() {
     </div>
 
     <div class="ribbon-panels" id="rb-panels-container">
-      <!-- 1. HOME PANEL -->
+      <!-- 1. HOME PANEL (ĐÃ LỌC BỎ CÔNG CỤ TRÙNG VỚI CỘT TRÁI) -->
       <div class="ribbon-panel active" id="rb-panel-home">
         <div class="ribbon-group">
           <div class="ribbon-group-body">
@@ -64,59 +64,43 @@ function buildRibbonHTML() {
             <button class="rb-btn-large" data-tool="addtext" title="Thêm văn bản mới vào trang">
               <span class="rb-icon">🅣</span><span class="rb-label">Thêm Chữ</span>
             </button>
+          </div>
+          <div class="ribbon-group-title">VĂN BẢN CHÍNH</div>
+        </div>
+
+        <div class="ribbon-group">
+          <div class="ribbon-group-body">
             <div class="rb-column">
-              <button class="rb-btn-compact" data-tool="free" title="Vẽ tự do"><span class="rb-icon">✏️</span> Bút vẽ</button>
-              <button class="rb-btn-compact" data-tool="line" title="Kẻ đường thẳng"><span class="rb-icon">📏</span> Đường thẳng</button>
+              <div class="rb-row">
+                <button class="rb-btn-compact" id="rb-page-prev" title="Trang trước">◀ Trước</button>
+                <span id="rb-page-num-display" style="font-weight:700; font-size:12px; color:#1e293b; min-width:48px; text-align:center;">1 / 1</span>
+                <button class="rb-btn-compact" id="rb-page-next" title="Trang sau">Sau ▶</button>
+              </div>
+              <div class="rb-row" style="margin-top:2px;">
+                <button class="rb-btn-compact" id="rb-zoom-out" title="Thu nhỏ">➖</button>
+                <button class="rb-btn-compact" id="rb-zoom-fit" title="Vừa chiều ngang khung">↔ Vừa khung</button>
+                <button class="rb-btn-compact" id="rb-zoom-in" title="Phóng to">➕</button>
+              </div>
             </div>
-            <div class="rb-column">
-              <button class="rb-btn-compact" data-tool="rect" title="Hình chữ nhật"><span class="rb-icon">⬜</span> Hình hộp</button>
-              <button class="rb-btn-compact" data-tool="ellipse" title="Hình elip / tròn"><span class="rb-icon">⭕</span> Hình elip</button>
-            </div>
-            <button class="rb-btn-large" data-tool="arrow" title="Vẽ mũi tên chỉ dẫn">
-              <span class="rb-icon">➡️</span><span class="rb-label">Mũi Tên</span>
+          </div>
+          <div class="ribbon-group-title">TRANG & THU PHÓNG</div>
+        </div>
+
+        <div class="ribbon-group">
+          <div class="ribbon-group-body">
+            <button class="rb-btn-large" id="rb-focus-draw-tools" title="Bảng Cọ vẽ, Thước kẻ, Hình hộp/elip, Phông chữ & Bảng màu ở cột trái">
+              <span class="rb-icon">🎨</span><span class="rb-label">Bảng Vẽ Trái</span>
             </button>
-          </div>
-          <div class="ribbon-group-title">VĂN BẢN & VẼ</div>
-        </div>
-
-        <div class="ribbon-group">
-          <div class="ribbon-group-body">
-            <div class="rb-column">
-              <div class="rb-row">
-                <select id="rb-font-select" class="rb-select" style="width:130px;" title="Phông chữ">
-                  <option value="roboto">Roboto (Mặc định)</option>
-                  <option value="times">Times New Roman</option>
-                  <option value="arial">Arial</option>
-                  <option value="tahoma">Tahoma</option>
-                  <option value="courier">Courier New</option>
-                </select>
-                <input type="number" id="rb-font-size" class="rb-input-num" value="12" min="4" max="200" step="0.5" title="Cỡ chữ (pt)">
-                <span style="font-size:11px;color:#666;">pt</span>
-              </div>
-              <div class="rb-row">
-                <button class="rb-btn-compact" id="rb-bold-btn" style="font-weight:900;" title="In đậm (Ctrl+B)">𝗕</button>
-                <button class="rb-btn-compact" id="rb-italic-btn" style="font-style:italic;" title="In nghiêng (Ctrl+I)">𝐼</button>
-                <span style="font-size:11px;color:#555;margin-left:4px;">Màu chữ:</span>
-                <input type="color" id="rb-text-color" value="#000000" style="width:28px;height:24px;padding:0;border:1px solid #cbd5e1;cursor:pointer;" title="Màu chữ">
-              </div>
+            <div class="rb-column" style="justify-content:center; max-width:180px;">
+              <span style="font-size:11px; color:#64748b; line-height:1.25;">
+                Toàn bộ cọ vẽ, thước kẻ, hình elip/vuông &amp; màu sắc nằm gọn ở cột trái!
+              </span>
+              <button class="rb-btn-compact" id="rb-toggle-sidebar" style="margin-top:3px; font-size:11px; width:fit-content;" title="Ẩn hoặc hiện cột công cụ bên trái">
+                ◧ Ẩn/Hiện cột trái
+              </button>
             </div>
           </div>
-          <div class="ribbon-group-title">ĐỊNH DẠNG CHỮ</div>
-        </div>
-
-        <div class="ribbon-group">
-          <div class="ribbon-group-body">
-            <div class="rb-column">
-              <div class="rb-row">
-                <span style="font-size:11px;color:#555;">Màu nét:</span>
-                <input type="color" id="rb-stroke-color" value="#ff0000" style="width:28px;height:24px;padding:0;border:1px solid #cbd5e1;cursor:pointer;" title="Màu nét vẽ">
-              </div>
-              <div class="rb-row">
-                <span style="font-size:11px;color:#666;" id="rb-brush-size-text">Nét: 3px</span>
-              </div>
-            </div>
-          </div>
-          <div class="ribbon-group-title">MÀU CỌ</div>
+          <div class="ribbon-group-title">CÔNG CỤ VẼ & SỬA</div>
         </div>
 
         <div class="ribbon-group">
@@ -523,6 +507,52 @@ function wireRibbonEvents() {
   // Compress
   document.getElementById('rb-apply-compress-btn')?.addEventListener('click', applyCompressToEditor);
 
+  // Page Navigation & Zoom
+  document.getElementById('rb-page-prev')?.addEventListener('click', () => {
+    if (typeof window.editorChangePage === 'function') {
+      window.editorChangePage(-1);
+      setTimeout(updateRibbonDocState, 150);
+    }
+  });
+  document.getElementById('rb-page-next')?.addEventListener('click', () => {
+    if (typeof window.editorChangePage === 'function') {
+      window.editorChangePage(1);
+      setTimeout(updateRibbonDocState, 150);
+    }
+  });
+  document.getElementById('rb-zoom-out')?.addEventListener('click', () => {
+    if (typeof window.editorZoomBy === 'function') window.editorZoomBy(-1);
+  });
+  document.getElementById('rb-zoom-fit')?.addEventListener('click', () => {
+    if (typeof window.editorZoomFit === 'function') window.editorZoomFit();
+  });
+  document.getElementById('rb-zoom-in')?.addEventListener('click', () => {
+    if (typeof window.editorZoomBy === 'function') window.editorZoomBy(1);
+  });
+
+  // Focus / Toggle Draw Tools in left panel
+  document.getElementById('rb-focus-draw-tools')?.addEventListener('click', () => {
+    const card = document.querySelector('#tab-editor .card:has(#tool-free), #tab-editor .draw-tools-grid');
+    const side = document.querySelector('#tab-editor .left-panel');
+    if (side && side.style.display === 'none') side.style.display = 'flex';
+    if (card) {
+      card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      card.style.outline = '2px solid #0078d4';
+      card.style.transition = 'outline 0.3s';
+      setTimeout(() => { card.style.outline = 'none'; }, 1800);
+    }
+    if (window.toast) window.toast('🎨 Bảng Cọ vẽ & Hình khối nằm tại cột trái', 'info', 2000);
+  });
+
+  document.getElementById('rb-toggle-sidebar')?.addEventListener('click', () => {
+    const side = document.querySelector('#tab-editor .left-panel');
+    if (side) {
+      const isHidden = side.style.display === 'none';
+      side.style.display = isHidden ? 'flex' : 'none';
+      if (window.toast) window.toast(isHidden ? 'Đã hiện cột công cụ trái' : 'Đã ẩn cột trái - Mở rộng không gian làm việc', 'info', 1500);
+    }
+  });
+
   // Protect
   document.getElementById('rb-apply-protect-btn')?.addEventListener('click', applyProtectToEditor);
 }
@@ -559,6 +589,11 @@ export function updateRibbonDocState() {
       badge.className = 'ribbon-doc-badge';
       badge.innerHTML = '<span>📄 Chưa mở file</span>';
     }
+  }
+
+  const pageNumDisplay = document.getElementById('rb-page-num-display');
+  if (pageNumDisplay) {
+    pageNumDisplay.textContent = doc ? `${page} / ${doc.numPages}` : '0 / 0';
   }
 
   // Update undo count

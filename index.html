@@ -33,8 +33,11 @@
         <button class="tab-btn has-menu" id="nav-convert" onclick="toggleMenu('menu-convert', this)">🔄 Chuyển đổi</button>
         <button class="tab-btn has-menu" id="nav-tools" onclick="toggleMenu('menu-tools', this)">🧰 Công cụ PDF</button>
         <button class="tab-btn" onclick="switchTab('tab-about', this)">ℹ️ Giới Thiệu</button>
-        <button class="theme-toggle" id="theme-toggle" onclick="toggleTheme()" title="Chuyển chế độ Sáng / Tối" aria-label="Chuyển chế độ Sáng / Tối">🌙 Chế độ tối</button>
-        <button class="theme-toggle" id="clear-session-btn" style="margin-left:8px;" onclick="clearSavedSession()" title="Xóa file và thao tác đã được lưu tự động trong trình duyệt">🗑️ Xóa dữ liệu đã lưu</button>
+        <div class="nav-right-actions" style="margin-left:auto; display:flex; align-items:center; gap:8px;">
+            <button class="theme-toggle" id="theme-toggle" onclick="toggleTheme()" title="Chuyển chế độ Sáng / Tối" aria-label="Chuyển chế độ Sáng / Tối">🌙 Chế độ tối</button>
+            <button class="theme-toggle" id="clear-session-btn" style="margin-left:0;" onclick="clearSavedSession()" title="Xóa file và thao tác đã được lưu tự động trong trình duyệt">🗑️ Xóa dữ liệu</button>
+            <button class="nav-login-btn" id="nav-login-btn" onclick="openLoginModal()" title="Đăng nhập tài khoản">🔐 Đăng nhập</button>
+        </div>
     </div>
 
     <div class="nav-menu" id="menu-convert" data-owner="nav-convert">
@@ -47,14 +50,16 @@
     <div class="nav-menu" id="menu-tools" data-owner="nav-tools">
         <div class="menu-sep" style="color:var(--primary); font-weight:bold;">⚡ Tự động hóa liên hoàn</div>
         <button class="menu-item" style="color:var(--primary); font-weight:bold;" onclick="switchTab('tab-tools', this); toolsSelect('pipeline')">⚡ Chuỗi liên hoàn (Nhiều bước 1 lần)</button>
+        <div class="menu-sep">Biểu mẫu &amp; Bảo mật</div>
+        <button class="menu-item" onclick="switchTab('tab-form', this)">📝 Điền form PDF (AcroForm)</button>
+        <button class="menu-item" onclick="switchTab('tab-redact', this)">🛡️ Che thông tin nhạy cảm (Redact)</button>
+        <button class="menu-item" onclick="switchTab('tab-tools', this); toolsSelect('protect')">🔒 Đặt / gỡ mật khẩu</button>
+        <button class="menu-item" onclick="switchTab('tab-tools', this); toolsSelect('meta')">🧹 Xóa / sửa metadata</button>
         <div class="menu-sep">Trang &amp; file</div>
         <button class="menu-item" onclick="switchTab('tab-tools', this); toolsSelect('split')">✂️ Tách file</button>
         <button class="menu-item" onclick="switchTab('tab-tools', this); toolsSelect('compress')">🗜️ Nén PDF</button>
         <button class="menu-item" onclick="switchTab('tab-tools', this); toolsSelect('margin')">📐 Canh lề trang (Margin)</button>
         <button class="menu-item" onclick="switchTab('tab-tools', this); toolsSelect('blank')">🧽 Loại bỏ trang trắng</button>
-        <div class="menu-sep">Bảo mật</div>
-        <button class="menu-item" onclick="switchTab('tab-tools', this); toolsSelect('protect')">🔒 Đặt / gỡ mật khẩu</button>
-        <button class="menu-item" onclick="switchTab('tab-tools', this); toolsSelect('meta')">🧹 Xóa / sửa metadata</button>
         <div class="menu-sep">Đánh dấu</div>
         <button class="menu-item" onclick="switchTab('tab-tools', this); toolsSelect('watermark')">💧 Chèn watermark</button>
         <button class="menu-item" onclick="switchTab('tab-tools', this); toolsSelect('pagenum')">🔢 Đánh số trang</button>
@@ -1023,9 +1028,14 @@
             </h1>
 
             <p style="font-style:italic;
-                      color:var(--primary-hover);">
+                      color:var(--primary-hover);
+                      margin-bottom:6px;">
                 Phiên bản V020726, Miễn phí cho mọi người -
                 Hỗ trợ kỹ thuật: Hải Hoàng 09-1800-1944
+            </p>
+
+            <p id="intro-auth-notice" style="font-size:13.5px; color:#b45309; background:#fffbeb; padding:8px 14px; border-radius:6px; border:1px solid #fde68a; display:inline-flex; align-items:center; gap:8px; margin:4px 0 14px 0; font-weight:600;">
+                ⭐ các tính năng cơ bản miễn phí để sử dụng các tính năng nâng cao cấp vui lòng đăng nhập
             </p>
 
             <p style="font-size:13px;">
