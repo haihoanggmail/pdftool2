@@ -17,9 +17,10 @@
     <link rel="icon" type="image/png" href="icon-192.png">
     <link rel="apple-touch-icon" href="icon-192.png">
     <meta name="theme-color" content="#0078d4">
-    <title>PDF tool by hachihi.vn - 0933842126, support by: Hải Hoàng 09-1800-1944</title>
-    
-    
+    <title>PDF Tool - Hachihi</title>
+    <meta name="description" content="Công cụ PDF trực tuyến: xoay, sắp xếp, gộp file, so sánh, chỉnh sửa, chuyển đổi Word/Excel/Ảnh, OCR và bảo mật PDF hoàn toàn trên trình duyệt.">
+    <meta property="og:title" content="PDF Tool - Hachihi">
+    <meta property="og:description" content="Công cụ PDF trực tuyến: xoay, sắp xếp, gộp file, so sánh, chỉnh sửa, chuyển đổi Word/Excel/Ảnh, OCR và bảo mật PDF hoàn toàn trên trình duyệt.">
     <link rel="stylesheet" href="./src/styles/legacy.css">
 </head>
 <body>
@@ -47,6 +48,7 @@
         <div class="menu-sep">Trang &amp; file</div>
         <button class="menu-item" onclick="switchTab('tab-tools', this); toolsSelect('split')">✂️ Tách file</button>
         <button class="menu-item" onclick="switchTab('tab-tools', this); toolsSelect('compress')">🗜️ Nén PDF</button>
+        <button class="menu-item" onclick="switchTab('tab-tools', this); toolsSelect('margin')">📐 Canh lề trang (Margin)</button>
         <button class="menu-item" onclick="switchTab('tab-tools', this); toolsSelect('blank')">🧽 Loại bỏ trang trắng</button>
         <div class="menu-sep">Bảo mật</div>
         <button class="menu-item" onclick="switchTab('tab-tools', this); toolsSelect('protect')">🔒 Đặt / gỡ mật khẩu</button>
@@ -510,6 +512,7 @@
                         <optgroup label="Trang &amp; file">
                             <option value="split">✂️ Tách file PDF</option>
                             <option value="compress">🗜️ Nén PDF (giảm dung lượng)</option>
+                            <option value="margin">📐 Canh lề trang (Margin chuẩn NĐ 30, đóng gáy...)</option>
                             <option value="blank">🧽 Loại bỏ trang trắng</option>
                         </optgroup>
                         <optgroup label="Chuyển đổi">
@@ -554,6 +557,111 @@
                         <div id="tl-split-n-row" style="display:none;">
                             <label class="tl-lb">Số trang mỗi file (N):</label>
                             <input type="number" id="tl-split-n" class="tl-in" min="1" value="10">
+                        </div>
+                    </div>
+
+                    <div class="tl-opts" data-tool="margin">
+                        <label class="tl-lb">Mẫu canh lề chuẩn:</label>
+                        <select id="tl-mg-preset" class="tl-in">
+                            <option value="nd30" selected>🇻🇳 Nghị định 30/2020/NĐ-CP (Chuẩn hành chính: Trái 30 - Phải 15 - Trên 20 - Dưới 20 mm)</option>
+                            <option value="book">📖 Đóng gáy sách (Lề gáy 30mm, lề ngoài 15mm, tự đảo trang chẵn/lẻ)</option>
+                            <option value="thesis">🎓 Luận văn / Đồ án (Trái 35mm, Phải 20mm, Trên 20mm, Dưới 20mm)</option>
+                            <option value="equal15">🔲 Lề đều 15 mm bốn phía</option>
+                            <option value="equal20">🔲 Lề đều 20 mm bốn phía</option>
+                            <option value="standard1in">🌐 Chuẩn Quốc tế (1 inch = 25.4 mm bốn phía)</option>
+                            <option value="narrow">📏 Lề hẹp (12.7 mm = 0.5 inch)</option>
+                            <option value="custom">✍️ Tùy chỉnh tự do...</option>
+                        </select>
+
+                        <div class="tl-grid2">
+                            <div>
+                                <label class="tl-lb">Đơn vị đo:</label>
+                                <select id="tl-mg-unit" class="tl-in">
+                                    <option value="mm" selected>Milimét (mm)</option>
+                                    <option value="cm">Xentimét (cm)</option>
+                                    <option value="inch">Inch (in)</option>
+                                    <option value="pt">Điểm (pt)</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="tl-lb">Phương thức canh lề:</label>
+                                <select id="tl-mg-mode" class="tl-in">
+                                    <option value="scale" selected>Thu nhỏ vừa khổ gốc (Khuyên dùng)</option>
+                                    <option value="expand">Mở rộng kích thước trang</option>
+                                    <option value="a4">Ép về chuẩn khổ A4</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="tl-card-sub" style="border:1px solid #cbd5e1; border-radius:6px; padding:8px 10px; margin-bottom:8px; background:#f8fafc;">
+                            <div style="font-size:11px; font-weight:700; color:var(--primary, #0078d4); margin-bottom:6px; display:flex; justify-content:space-between; align-items:center;">
+                                <span>📐 KÍCH THƯỚC LỀ</span>
+                                <span id="tl-mg-unit-badge" style="font-size:10px; font-weight:normal; background:#e2e8f0; padding:1px 5px; border-radius:3px;">mm</span>
+                            </div>
+                            <div class="tl-grid2">
+                                <div>
+                                    <label class="tl-lb" id="tl-mg-lb-left">Lề Trái (Left):</label>
+                                    <input type="number" id="tl-mg-left" class="tl-in" min="0" max="200" step="0.5" value="30">
+                                </div>
+                                <div>
+                                    <label class="tl-lb" id="tl-mg-lb-right">Lề Phải (Right):</label>
+                                    <input type="number" id="tl-mg-right" class="tl-in" min="0" max="200" step="0.5" value="15">
+                                </div>
+                            </div>
+                            <div class="tl-grid2">
+                                <div>
+                                    <label class="tl-lb">Lề Trên (Top):</label>
+                                    <input type="number" id="tl-mg-top" class="tl-in" min="0" max="200" step="0.5" value="20">
+                                </div>
+                                <div>
+                                    <label class="tl-lb">Lề Dưới (Bottom):</label>
+                                    <input type="number" id="tl-mg-bottom" class="tl-in" min="0" max="200" step="0.5" value="20">
+                                </div>
+                            </div>
+                        </div>
+
+                        <label class="tl-ck" style="font-weight:600;">
+                            <input type="checkbox" id="tl-mg-mirror"> 📖 Đảo lề trang chẵn (in 2 mặt / đóng gáy sách)
+                        </label>
+                        <p class="editor-hint" style="margin-top:-2px; margin-bottom:6px;">Trang lẻ (1, 3, 5...): lề trái là gáy sách; Trang chẵn (2, 4, 6...): lề phải là gáy sách.</p>
+
+                        <div class="tl-grid2">
+                            <div>
+                                <label class="tl-lb">Căn chỉnh nội dung:</label>
+                                <select id="tl-mg-align" class="tl-in">
+                                    <option value="center" selected>Chính giữa vùng lề</option>
+                                    <option value="top">Căn sát lề trên</option>
+                                    <option value="bottom">Căn sát lề dưới</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="tl-lb">Phạm vi trang:</label>
+                                <select id="tl-mg-scope" class="tl-in">
+                                    <option value="all" selected>Tất cả các trang</option>
+                                    <option value="odd">Chỉ trang lẻ (1, 3, 5...)</option>
+                                    <option value="even">Chỉ trang chẵn (2, 4, 6...)</option>
+                                    <option value="custom">Khoảng trang tùy chọn</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div id="tl-mg-pages-row" style="display:none;">
+                            <label class="tl-lb">Các trang áp dụng:</label>
+                            <input type="text" id="tl-mg-pages" class="tl-in" placeholder="ví dụ: 1-5, 8, 12">
+                        </div>
+
+                        <!-- Khung xem trước trực quan -->
+                        <div class="tl-card-sub" style="margin-top:6px; border:1px solid #cbd5e1; border-radius:6px; padding:8px; background:#f8fafc;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                                <span style="font-size:11px; font-weight:700; color:#334155;">👁️ MÔ PHỎNG LỀ TRỰC QUAN</span>
+                                <span id="tl-mg-preview-info" style="font-size:10px; color:#64748b;">Xem trước khổ A4</span>
+                            </div>
+                            <div id="tl-mg-preview-wrap" style="display:flex; justify-content:center; align-items:center; height:150px; background:#e2e8f0; border:1px solid #cbd5e1; border-radius:4px; position:relative; overflow:hidden;">
+                                <canvas id="tl-mg-preview-cv" width="120" height="170" style="max-height:140px; box-shadow:0 2px 6px rgba(0,0,0,0.15); border-radius:2px;"></canvas>
+                            </div>
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-top:4px;">
+                                <span style="font-size:10px; color:#64748b;" id="tl-mg-preview-sub">Tỉ lệ co: 100%</span>
+                                <button type="button" id="tl-mg-toggle-page-btn" class="btn" style="width:auto; padding:1px 6px; font-size:10px; display:none;">Đổi xem trang chẵn</button>
+                            </div>
                         </div>
                     </div>
 
@@ -813,7 +921,7 @@
 
                 <li>
                     <b>Bộ công cụ PDF:</b>
-                    Tách file, nén PDF, đặt / gỡ mật khẩu, watermark, đánh số trang,
+                    Tách file, nén PDF, canh lề trang (chuẩn NĐ 30, đóng gáy sách), đặt / gỡ mật khẩu, watermark, đánh số trang,
                     tạo mục lục (bookmark), xóa / sửa metadata.
                 </li>
 

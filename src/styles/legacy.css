@@ -364,6 +364,10 @@
         html[data-theme="dark"] #tab-tools .tl-row { background: #25282e; border-color: #3a3f47; color: #e6e8eb; }
         html[data-theme="dark"] #tab-tools .tl-in { background: #1d2025; border-color: #3a3f47; color: #e6e8eb; }
         html[data-theme="dark"] #tab-tools .tl-lb { color: #aab0b8; }
+        html[data-theme="dark"] .tl-card-sub { background: #25282e !important; border-color: #3a3f47 !important; color: #e6e8eb !important; }
+        html[data-theme="dark"] #tl-mg-preview-wrap { background: #16181c !important; border-color: #3a3f47 !important; }
+        html[data-theme="dark"] #tl-mg-unit-badge { background: #3a3f47 !important; color: #e6e8eb !important; }
+        html[data-theme="dark"] #tl-mg-preview-info, html[data-theme="dark"] #tl-mg-preview-sub { color: #94a3b8 !important; }
         @media print {
             html[data-theme="dark"] body { background: #fff !important; color: #000 !important; }
         }
