@@ -1830,8 +1830,8 @@ function initEditorRegionSelection() {
 
 function setEditorTool(toolName) {
     editorCurrentTool = toolName;
-    document.querySelectorAll('.btn-tool').forEach(b => b.classList.remove('active'));
-    document.getElementById(`tool-${toolName}`).classList.add('active');
+    const tb = document.getElementById(`tool-${toolName}`);
+    if (tb) tb.classList.add('active');
     const textLayer = document.getElementById('editor-text-layer');
     if (toolName === 'text' || toolName === 'addtext') {
         textLayer.classList.remove('drawing-active');
@@ -1873,16 +1873,26 @@ function getArrowGeometry(x1, y1, x2, y2, size) {
 }
 
 function updateBrushPreview() {
-    document.getElementById('brush-size-status').innerText = `Độ dày nét: ${brushSize}px (Cuộn chuột để thay đổi)`;
+    const el = document.getElementById('brush-size-status');
+    if (el) el.innerText = `Độ dày nét: ${brushSize}px (Cuộn chuột để thay đổi)`;
 }
+window.changeBrushSize = function(delta) {
+    brushSize = Math.max(1, Math.min(50, brushSize + delta));
+    updateBrushPreview();
+    if (typeof redrawPageShapes === 'function') redrawPageShapes();
+};
+window.getBrushSize = function() { return brushSize; };
 
 document.addEventListener('keydown', function(e) {
-    const isEditorActive = document.getElementById('tab-editor').classList.contains('active');
+    const isEditorActive = document.getElementById('tab-editor')?.classList.contains('active');
     if (!isEditorActive) return;
     const t = e.target;
     if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
     const _k = e.key.toLowerCase();
-    if ((e.ctrlKey || e.metaKey) && !e.shiftKey && _k === 'c') {
+    if ((e.ctrlKey || e.metaKey) && _k === 'o') {
+        e.preventDefault();
+        document.getElementById('editor-file-input')?.click();
+    } else if ((e.ctrlKey || e.metaKey) && !e.shiftKey && _k === 'c') {
         if (editorCopySelection()) e.preventDefault();
     } else if ((e.ctrlKey || e.metaKey) && !e.shiftKey && _k === 'v') {
         if (editorClip) { e.preventDefault(); editorPasteClip(); }
@@ -1892,6 +1902,9 @@ document.addEventListener('keydown', function(e) {
     } else if ((e.ctrlKey || e.metaKey) && (_k === 'y' || (_k === 'z' && e.shiftKey))) {
         e.preventDefault();
         editorRedo();
+    } else if ((e.ctrlKey || e.metaKey) && _k === 's') {
+        e.preventDefault();
+        if (typeof editorExportPDF === 'function') editorExportPDF();
     }
 });
 

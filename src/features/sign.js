@@ -81,13 +81,10 @@ const HTML = `
 </div>`;
 
 function mount() {
-  const aboutTab = document.getElementById('tab-about'); const aboutBtn = [...document.querySelectorAll('.tab-btn')].find(b => b.getAttribute('onclick')?.includes('tab-about'));
-  if (!aboutTab || !aboutBtn) return false;
+  const aboutTab = document.getElementById('tab-about');
+  if (!aboutTab) return false;
   const sec = Object.assign(document.createElement('div'), { id: 'tab-sign', className: 'tab-content', innerHTML: HTML });
   aboutTab.parentNode.insertBefore(sec, aboutTab);
-  const btn = Object.assign(document.createElement('button'), { className: 'tab-btn', textContent: '✍️ Ký tên' });
-  btn.setAttribute('onclick', "switchTab('tab-sign', this)");
-  aboutBtn.parentNode.insertBefore(btn, aboutBtn);
   return true;
 }
 

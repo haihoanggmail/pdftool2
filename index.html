@@ -51,6 +51,7 @@
         <div class="menu-sep" style="color:var(--primary); font-weight:bold;">⚡ Tự động hóa liên hoàn</div>
         <button class="menu-item" style="color:var(--primary); font-weight:bold;" onclick="switchTab('tab-tools', this); toolsSelect('pipeline')">⚡ Chuỗi liên hoàn (Nhiều bước 1 lần)</button>
         <div class="menu-sep">Biểu mẫu &amp; Bảo mật</div>
+        <button class="menu-item" onclick="switchTab('tab-sign', this)">✍️ Ký tên PDF (Chữ ký điện tử / vẽ / ảnh)</button>
         <button class="menu-item" onclick="switchTab('tab-form', this)">📝 Điền form PDF (AcroForm)</button>
         <button class="menu-item" onclick="switchTab('tab-redact', this)">🛡️ Che thông tin nhạy cảm (Redact)</button>
         <button class="menu-item" onclick="switchTab('tab-tools', this); toolsSelect('protect')">🔒 Đặt / gỡ mật khẩu</button>
@@ -291,77 +292,14 @@
     </div>
 
     <div id="tab-editor" class="tab-content">
+        <!-- Hidden input and status elements for file loading and legacy script compatibility -->
+        <input type="file" id="editor-file-input" accept="application/pdf" style="display:none" onchange="editorLoadFile(this)">
+        <div id="editor-file-status" style="display:none">Chưa chọn file.</div>
+        <div id="region-status" style="display:none">Chưa chọn đối tượng</div>
+        <div id="editor-img-status" style="display:none"></div>
+
         <div class="editor-layout">
-            <div class="editor-sidebar">
-                <div class="card">
-                    <p class="card-title">1. Mở tài liệu sửa chữ</p>
-                    <input type="file" id="editor-file-input" accept="application/pdf" style="display:none" onchange="editorLoadFile(this)">
-                    <button class="btn" onclick="document.getElementById('editor-file-input').click()">📁 Mở File PDF</button>
-                    <div id="editor-file-status" style="font-size:12px;color:gray;word-break:break-all">Chưa chọn file.</div>
-                </div>
-
-                <div class="card">
-                    <p class="card-title">🎨 CÔNG CỤ VẼ & SỬA</p>
-                    <div class="draw-tools-grid">
-                        <button class="btn btn-small btn-tool active" id="tool-text" onclick="setEditorTool('text')">🔤 Chọn Chữ</button>
-                        <button class="btn btn-small region-tool-btn" id="region-mode-btn" aria-pressed="false" title="Kéo chuột quanh vùng cần chọn, rồi kéo để di chuyển cả vùng">▣ Chọn Vùng</button>
-                        <button class="btn btn-small btn-tool" id="tool-addtext" onclick="setEditorTool('addtext')">🅣 Thêm Chữ</button>
-                        <button class="btn btn-small btn-tool" id="tool-free" onclick="setEditorTool('free')">✏️ Vẽ Tự Do</button>
-                        <button class="btn btn-small btn-tool" id="tool-line" onclick="setEditorTool('line')">📏 Đường Thẳng</button>
-                        <button class="btn btn-small btn-tool" id="tool-rect" onclick="setEditorTool('rect')">⬜ Hình Vuông</button>
-                        <button class="btn btn-small btn-tool" id="tool-ellipse" onclick="setEditorTool('ellipse')">⭕ Hình Elip</button>
-                        <button class="btn btn-small btn-tool" id="tool-arrow" onclick="setEditorTool('arrow')">➡️ Mũi Tên</button>
-                    </div>
-                    <div class="region-status" id="region-status" style="margin:0 0 8px;">Chưa chọn đối tượng</div>
-                    <div style="margin-bottom:8px;">
-                        <label style="font-size:11px; font-weight:600; color:#555;">Màu nét vẽ:</label>
-                        <input type="color" id="editor-stroke-color" value="#ff0000" style="width:100%; height:32px; padding:0; border:1px solid #cbd5e1; border-radius:4px; cursor:pointer;" onchange="updateBrushPreview()">
-                    </div>
-                    <div style="margin-bottom:8px;">
-                        <label style="font-size:11px; font-weight:600; color:#555;">Màu chữ (khi sửa chữ):</label>
-                        <input type="color" id="editor-text-color" value="#000000" style="width:100%; height:32px; padding:0; border:1px solid #cbd5e1; border-radius:4px; cursor:pointer;">
-                        <p class="editor-hint">Click đúp vào chữ → chọn màu ở đây → nhấn <b>Enter</b> để lưu. Mặc định lấy đúng màu chữ gốc.</p>
-                    </div>
-                    <div style="margin-bottom:8px;">
-                        <label style="font-size:11px; font-weight:600; color:#555;">Cỡ chữ (pt):</label>
-                        <input type="number" id="editor-text-size" min="4" max="200" step="0.5" value="12">
-                    </div>
-                    <div style="margin-bottom:8px;">
-                        <label style="font-size:11px; font-weight:600; color:#555;">Font chữ:</label>
-                        <select id="editor-text-font" style="width:100%; height:32px; border:1px solid #cbd5e1; border-radius:4px; padding:0 6px; background:#fff;"></select>
-                        <button class="btn btn-small btn-tool" id="editor-local-font-btn" style="margin-top:6px; width:100%;" onclick="loadLocalFontList()">🔍 Nạp font có sẵn trong máy</button>
-                        <p class="editor-hint">Đang sửa/thêm chữ: chọn font ở đây để đổi ngay. Khi chưa chọn chữ nào, font này là mặc định cho chữ thêm mới. 6 font đầu đã nhúng sẵn (hỗ trợ tiếng Việt). Font trong máy chỉ đúng khi font đó có đủ dấu tiếng Việt và cần Chrome/Edge.</p>
-                    </div>
-                    <div class="editor-hint" id="editor-img-status" style="margin:2px 0 6px;"></div>
-                    <div class="brush-status" id="brush-size-status">Độ dày nét: 3px (Cuộn chuột để thay đổi)</div>
-                </div>
-
-                <div class="card">
-                    <p class="card-title">✏️ PHÍM TẮT & HƯỚNG DẪN</p>
-                    <p class="editor-hint" style="font-size:12.5px; color:#333; line-height: 1.5;">
-                        • <b>Sửa & Định dạng Chữ:</b><br>
-                        - Click đúp chữ để sửa.<br>
-                        - Nhấn <b>Ctrl + B</b> để in đậm chữ.<br>
-                        - Nhấn <b>Ctrl + I</b> để in nghiêng chữ.<br>
-                        • <b>Thêm chữ mới:</b><br>
-                        - Chọn <b>🅣 Thêm Chữ</b>, click vào trang, gõ chữ rồi nhấn <b>Enter</b> (dùng màu & cỡ chữ đang chọn bên trên).<br>
-                        - Click đúp để sửa, kéo để dời; xóa hết chữ để bỏ.<br>
-                        • <b>Hoàn tác / Làm lại:</b><br>
-                        - <b>Ctrl + Z</b> hoàn tác từng thao tác (chữ, ảnh, hình vẽ); <b>Ctrl + Y</b> (hoặc Ctrl + Shift + Z) làm lại.<br>
-                        • <b>Phóng to / thu nhỏ:</b> nút ➖ ➕ ở thanh dưới hoặc <b>Ctrl + cuộn chuột</b>.<br>
-                        • <b>Giữ Shift</b> khi kéo: hình vuông/tròn đều, đường thẳng/mũi tên theo góc 45°.<br>
-                        • <b>Cọ Vẽ:</b> Cuộn chuột trên trang để tăng/giảm nét vẽ nhanh chóng.
-                    </p>
-                </div>
-
-                <div class="card" style="margin-top:auto">
-                    <p class="card-title">2. Xuất PDF</p>
-                    <button class="btn btn-success" id="editor-download-btn" onclick="editorExportPDF()" disabled>💾 XUẤT FILE ĐÃ SỬA</button>
-                    <div class="editor-hint" style="text-align:center; margin-top:4px;">Phiên bản: v5 · 07/10/2026</div>
-                </div>
-            </div>
-
-            <div class="editor-main">
+            <div class="editor-main" style="width:100%; flex:1;">
 			<div class="editor-pagebar" style="position: sticky; bottom: 0; z-index: 100; background: white; box-shadow: 0 -2px 10px rgba(0,0,0,0.05); width: 100%; box-sizing: border-box;">
                     <button class="btn btn-small" onclick="editorChangePage(-1)">◀ Trước</button>
                     <span id="editor-page-indicator" style="font-weight:bold">0 / 0</span>
@@ -377,7 +315,17 @@
                 </div>
 				
                 <div class="editor-stage-scroll">
-                    <div id="editor-empty" style="color:#666;margin-top:60px">Mở PDF để bắt đầu chỉnh sửa văn bản trực tiếp.</div>
+                    <div id="editor-empty" style="color:#666; margin:80px auto; max-width:480px; text-align:center; padding:36px; background:#fff; border-radius:12px; box-shadow:0 8px 24px rgba(0,0,0,0.06); border:1px solid #e2e8f0;">
+                        <div style="font-size:48px; margin-bottom:12px;">📄</div>
+                        <h2 style="font-size:18px; font-weight:700; color:#1e293b; margin:0 0 8px 0;">Chưa Mở Tài Liệu PDF</h2>
+                        <p style="font-size:13.5px; color:#64748b; margin:0 0 20px 0; line-height:1.5;">
+                            Giao diện chỉnh sửa phong cách <b>Microsoft Word</b>.<br>
+                            Nhấn phím tắt <b>Ctrl + O</b> hoặc vào menu <b>Tệp</b> để mở tài liệu.
+                        </p>
+                        <button class="btn btn-primary" style="width:auto; margin:0 auto; padding:10px 24px; font-size:14px; background:#0078d4; border-radius:6px; font-weight:600; cursor:pointer;" onclick="document.getElementById('editor-file-input').click()">
+                            📂 Mở File PDF (Ctrl + O)
+                        </button>
+                    </div>
                     <div id="editor-page-shell" class="editor-container-shell" style="display:none">
                         <canvas id="editor-pdf-canvas"></canvas>
                         <canvas id="editor-draw-canvas"></canvas>

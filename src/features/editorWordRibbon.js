@@ -30,42 +30,66 @@ export function initEditorWordRibbon() {
 function buildRibbonHTML() {
   return `
     <div class="ribbon-tabs-bar">
-      <button class="ribbon-file-btn" id="rb-file-menu-btn" title="Menu Tệp / File">📁 TỆP</button>
+      <button class="ribbon-file-btn" id="rb-file-menu-btn" title="Menu Tệp / File (Ctrl+O để mở file)">📁 TỆP</button>
       <button class="ribbon-tab-btn active" data-tab="home">🏠 Trang chủ</button>
-      <button class="ribbon-tab-btn" data-tab="layout">📐 Bố trí & Canh lề</button>
-      <button class="ribbon-tab-btn" data-tab="insert">➕ Chèn & Ký tên</button>
-      <button class="ribbon-tab-btn highlight" data-tab="pipeline">⚡ Chuỗi liên hoàn & Công cụ</button>
+      <button class="ribbon-tab-btn" data-tab="draw">🎨 Vẽ &amp; Hình khối</button>
+      <button class="ribbon-tab-btn" data-tab="layout">📐 Bố trí &amp; Canh lề</button>
+      <button class="ribbon-tab-btn" data-tab="insert">➕ Chèn &amp; Ký tên</button>
+      <button class="ribbon-tab-btn highlight" data-tab="pipeline">⚡ Tự động hóa</button>
 
       <div class="ribbon-right-tools">
+        <button class="rb-btn-compact" id="rb-quick-open-btn" style="background:#0078d4; color:#fff; font-weight:bold; border-color:#005a9e;" title="Mở file PDF (Ctrl + O)">
+          📂 Mở file (Ctrl+O)
+        </button>
         <div class="ribbon-doc-badge" id="rb-doc-badge">
           <span>📄 Chưa mở file</span>
         </div>
         <button class="rb-btn-compact" id="rb-doc-undo-btn" style="display:none; color:#b91c1c; font-weight:bold;" title="Khôi phục trạng thái tài liệu trước khi chạy công cụ">
           ↩ Hoàn tác công cụ (<span id="rb-undo-count">0</span>)
         </button>
-        <button class="rb-btn-compact" id="rb-save-btn" style="background:#059669; color:#fff; border-color:#047857; font-weight:bold;" title="Tải file PDF đã chỉnh sửa về máy">
-          💾 Lưu file
+        <button class="rb-btn-compact" id="rb-save-btn" style="background:#059669; color:#fff; border-color:#047857; font-weight:bold;" title="Tải file PDF đã chỉnh sửa về máy (Ctrl + S)">
+          💾 Lưu file (Ctrl+S)
         </button>
         <button class="rb-btn-compact" id="rb-toggle-collapse" title="Thu gọn / Mở rộng thanh công cụ">▲</button>
       </div>
     </div>
 
     <div class="ribbon-panels" id="rb-panels-container">
-      <!-- 1. HOME PANEL (ĐÃ LỌC BỎ CÔNG CỤ TRÙNG VỚI CỘT TRÁI) -->
+      <!-- 1. HOME PANEL (TRANG CHỦ KIỂU MICROSOFT WORD) -->
       <div class="ribbon-panel active" id="rb-panel-home">
         <div class="ribbon-group">
           <div class="ribbon-group-body">
-            <button class="rb-btn-large active" data-tool="text" title="Chọn và sửa văn bản trực tiếp">
-              <span class="rb-icon">🔤</span><span class="rb-label">Chọn Chữ</span>
+            <button class="rb-btn-large active btn-tool" id="tool-text" data-tool="text" title="Chọn và sửa văn bản trực tiếp trên trang (Click đúp vào chữ để sửa)">
+              <span class="rb-icon">🔤</span><span class="rb-label">Chọn &amp; Sửa Chữ</span>
             </button>
-            <button class="rb-btn-large" data-tool="region" title="Chọn và di chuyển cả khối / vùng">
+            <button class="rb-btn-large region-tool-btn" id="region-mode-btn" data-tool="region" title="Khoanh vùng để di chuyển cả khối đối tượng">
               <span class="rb-icon">▣</span><span class="rb-label">Chọn Vùng</span>
             </button>
-            <button class="rb-btn-large" data-tool="addtext" title="Thêm văn bản mới vào trang">
-              <span class="rb-icon">🅣</span><span class="rb-label">Thêm Chữ</span>
+            <button class="rb-btn-large btn-tool" id="tool-addtext" data-tool="addtext" title="Thêm chữ mới vào trang">
+              <span class="rb-icon">🅣</span><span class="rb-label">Thêm Chữ Mới</span>
             </button>
           </div>
-          <div class="ribbon-group-title">VĂN BẢN CHÍNH</div>
+          <div class="ribbon-group-title">VĂN BẢN</div>
+        </div>
+
+        <div class="ribbon-group">
+          <div class="ribbon-group-body">
+            <div class="rb-column">
+              <div class="rb-row">
+                <select id="editor-text-font" class="rb-select" style="width:140px;" title="Phông chữ"></select>
+                <input type="number" id="editor-text-size" class="rb-input-num" value="12" min="4" max="200" step="0.5" title="Cỡ chữ (pt)">
+                <span style="font-size:11px;color:#666;">pt</span>
+                <button class="rb-btn-compact btn-tool" id="editor-local-font-btn" onclick="loadLocalFontList()" title="Quét font có sẵn trong máy tính">🔍 Font máy</button>
+              </div>
+              <div class="rb-row" style="margin-top:2px;">
+                <button class="rb-btn-compact" id="rb-bold-btn" style="font-weight:900;" title="In đậm (Ctrl+B)">𝗕</button>
+                <button class="rb-btn-compact" id="rb-italic-btn" style="font-style:italic;" title="In nghiêng (Ctrl+I)">𝐼</button>
+                <span style="font-size:11px;color:#555;margin-left:4px;">Màu chữ:</span>
+                <input type="color" id="editor-text-color" value="#000000" style="width:28px;height:24px;padding:0;border:1px solid #cbd5e1;cursor:pointer;" title="Màu chữ">
+              </div>
+            </div>
+          </div>
+          <div class="ribbon-group-title">PHÔNG CHỮ &amp; ĐỊNH DẠNG</div>
         </div>
 
         <div class="ribbon-group">
@@ -83,36 +107,81 @@ function buildRibbonHTML() {
               </div>
             </div>
           </div>
-          <div class="ribbon-group-title">TRANG & THU PHÓNG</div>
+          <div class="ribbon-group-title">TRANG &amp; THU PHÓNG</div>
         </div>
 
         <div class="ribbon-group">
           <div class="ribbon-group-body">
-            <button class="rb-btn-large" id="rb-focus-draw-tools" title="Bảng Cọ vẽ, Thước kẻ, Hình hộp/elip, Phông chữ & Bảng màu ở cột trái">
-              <span class="rb-icon">🎨</span><span class="rb-label">Bảng Vẽ Trái</span>
-            </button>
-            <div class="rb-column" style="justify-content:center; max-width:180px;">
-              <span style="font-size:11px; color:#64748b; line-height:1.25;">
-                Toàn bộ cọ vẽ, thước kẻ, hình elip/vuông &amp; màu sắc nằm gọn ở cột trái!
-              </span>
-              <button class="rb-btn-compact" id="rb-toggle-sidebar" style="margin-top:3px; font-size:11px; width:fit-content;" title="Ẩn hoặc hiện cột công cụ bên trái">
-                ◧ Ẩn/Hiện cột trái
-              </button>
-            </div>
-          </div>
-          <div class="ribbon-group-title">CÔNG CỤ VẼ & SỬA</div>
-        </div>
-
-        <div class="ribbon-group">
-          <div class="ribbon-group-body">
-            <button class="rb-btn-large" id="rb-undo-btn" title="Hoàn tác (Ctrl+Z)">
+            <button class="rb-btn-large btn-tool" id="editor-undo-btn" title="Hoàn tác (Ctrl+Z)">
               <span class="rb-icon">↩</span><span class="rb-label">Hoàn tác</span>
             </button>
-            <button class="rb-btn-large" id="rb-redo-btn" title="Làm lại (Ctrl+Y)">
+            <button class="rb-btn-large btn-tool" id="editor-redo-btn" title="Làm lại (Ctrl+Y)">
               <span class="rb-icon">↪</span><span class="rb-label">Làm lại</span>
             </button>
           </div>
-          <div class="ribbon-group-title">LỊCH SỬ SỬA</div>
+          <div class="ribbon-group-title">LỊCH SỬ</div>
+        </div>
+
+        <div class="ribbon-group">
+          <div class="ribbon-group-body">
+            <button class="rb-btn-large btn-success" id="editor-download-btn" style="background:#059669; color:#fff;" title="Xuất file PDF đã chỉnh sửa (Ctrl+S)">
+              <span class="rb-icon">💾</span><span class="rb-label">Xuất PDF</span>
+            </button>
+            <button class="rb-btn-large" id="rb-print-btn" title="In trang này (Ctrl+P)">
+              <span class="rb-icon">🖨️</span><span class="rb-label">In Trang</span>
+            </button>
+          </div>
+          <div class="ribbon-group-title">XUẤT BẢN</div>
+        </div>
+      </div>
+
+      <!-- 2. DRAW PANEL (VẼ & HÌNH KHỐI ĐẦY ĐỦ) -->
+      <div class="ribbon-panel" id="rb-panel-draw">
+        <div class="ribbon-group">
+          <div class="ribbon-group-body">
+            <button class="rb-btn-large btn-tool" id="tool-free" data-tool="free" title="Vẽ nét cọ tự do lên trang">
+              <span class="rb-icon">✏️</span><span class="rb-label">Bút Vẽ Tự Do</span>
+            </button>
+            <div class="rb-column">
+              <div class="rb-row">
+                <span style="font-size:11px;color:#555;">Màu nét:</span>
+                <input type="color" id="editor-stroke-color" value="#ff0000" style="width:28px;height:24px;padding:0;border:1px solid #cbd5e1;cursor:pointer;" onchange="updateBrushPreview()" title="Màu nét vẽ">
+              </div>
+              <div class="rb-row" style="margin-top:2px;">
+                <span style="font-size:11px;color:#666;" id="brush-size-status">Độ dày nét: 3px</span>
+                <button class="rb-btn-compact" id="rb-brush-dec" title="Giảm cỡ nét" style="padding:1px 6px;">➖</button>
+                <button class="rb-btn-compact" id="rb-brush-inc" title="Tăng cỡ nét" style="padding:1px 6px;">➕</button>
+              </div>
+            </div>
+          </div>
+          <div class="ribbon-group-title">CỌ VẼ &amp; MÀU NÉT</div>
+        </div>
+
+        <div class="ribbon-group">
+          <div class="ribbon-group-body">
+            <button class="rb-btn-large btn-tool" id="tool-line" data-tool="line" title="Kẻ đường thẳng">
+              <span class="rb-icon">📏</span><span class="rb-label">Đường Thẳng</span>
+            </button>
+            <button class="rb-btn-large btn-tool" id="tool-rect" data-tool="rect" title="Vẽ hình vuông / hộp chữ nhật">
+              <span class="rb-icon">⬜</span><span class="rb-label">Hình Vuông</span>
+            </button>
+            <button class="rb-btn-large btn-tool" id="tool-ellipse" data-tool="ellipse" title="Vẽ hình elip / tròn">
+              <span class="rb-icon">⭕</span><span class="rb-label">Hình Elip</span>
+            </button>
+            <button class="rb-btn-large btn-tool" id="tool-arrow" data-tool="arrow" title="Vẽ mũi tên chỉ dẫn">
+              <span class="rb-icon">➡️</span><span class="rb-label">Mũi Tên</span>
+            </button>
+          </div>
+          <div class="ribbon-group-title">HÌNH HỌC &amp; CHỈ DẪN</div>
+        </div>
+
+        <div class="ribbon-group">
+          <div class="ribbon-group-body" style="align-items:center; max-width:240px;">
+            <p style="font-size:11px; color:#475569; margin:0; line-height:1.4;">
+              💡 <b>Mẹo:</b> Giữ phím <b>Shift</b> để vẽ hình vuông/tròn đều, đường thẳng theo góc 45°. Cuộn chuột trên trang để tăng/giảm nét vẽ nhanh chóng!
+            </p>
+          </div>
+          <div class="ribbon-group-title">HƯỚNG DẪN</div>
         </div>
       </div>
 
@@ -412,36 +481,21 @@ function wireRibbonEvents() {
     });
   });
 
-  // Sync font formatting controls
-  const fSelect = document.getElementById('rb-font-select');
-  const fSize = document.getElementById('rb-font-size');
-  const fColor = document.getElementById('rb-text-color');
-  const sColor = document.getElementById('rb-stroke-color');
+  // Populate font selector if empty
+  const fontSel = document.getElementById('editor-text-font');
+  if (fontSel && !fontSel.children.length && Array.isArray(window.FONT_LIST)) {
+    window.FONT_LIST.forEach(f => {
+      const o = document.createElement('option');
+      o.value = f.key;
+      o.textContent = f.label;
+      fontSel.appendChild(o);
+    });
+  }
 
-  if (fSelect) {
-    fSelect.addEventListener('change', () => {
-      const orig = document.getElementById('editor-text-font');
-      if (orig) { orig.value = fSelect.value; orig.dispatchEvent(new Event('change')); }
-    });
-  }
-  if (fSize) {
-    fSize.addEventListener('input', () => {
-      const orig = document.getElementById('editor-text-size');
-      if (orig) { orig.value = fSize.value; orig.dispatchEvent(new Event('input')); }
-    });
-  }
-  if (fColor) {
-    fColor.addEventListener('input', () => {
-      const orig = document.getElementById('editor-text-color');
-      if (orig) { orig.value = fColor.value; orig.dispatchEvent(new Event('input')); }
-    });
-  }
-  if (sColor) {
-    sColor.addEventListener('input', () => {
-      const orig = document.getElementById('editor-stroke-color');
-      if (orig) { orig.value = sColor.value; orig.dispatchEvent(new Event('change')); }
-    });
-  }
+  // Quick Open Button (Ctrl + O)
+  document.getElementById('rb-quick-open-btn')?.addEventListener('click', () => {
+    document.getElementById('editor-file-input')?.click();
+  });
 
   // Bold & Italic
   const boldBtn = document.getElementById('rb-bold-btn');
@@ -458,14 +512,29 @@ function wireRibbonEvents() {
   }
 
   // Undo / Redo
-  const undoBtn = document.getElementById('rb-undo-btn');
+  const undoBtn = document.getElementById('editor-undo-btn');
   if (undoBtn) undoBtn.addEventListener('click', () => { if (typeof window.editorUndo === 'function') window.editorUndo(); });
-  const redoBtn = document.getElementById('rb-redo-btn');
+  const redoBtn = document.getElementById('editor-redo-btn');
   if (redoBtn) redoBtn.addEventListener('click', () => { if (typeof window.editorRedo === 'function') window.editorRedo(); });
 
   // Save / Export
-  const saveBtn = document.getElementById('rb-save-btn');
+  const saveBtn = document.getElementById('editor-download-btn');
   if (saveBtn) saveBtn.addEventListener('click', () => { if (typeof window.editorExportPDF === 'function') window.editorExportPDF(); });
+  const topSaveBtn = document.getElementById('rb-save-btn');
+  if (topSaveBtn) topSaveBtn.addEventListener('click', () => { if (typeof window.editorExportPDF === 'function') window.editorExportPDF(); });
+
+  // Print button
+  document.getElementById('rb-print-btn')?.addEventListener('click', () => {
+    if (typeof window.printEditorStage === 'function') window.printEditorStage();
+  });
+
+  // Brush size adjusters
+  document.getElementById('rb-brush-dec')?.addEventListener('click', () => {
+    if (typeof window.changeBrushSize === 'function') window.changeBrushSize(-1);
+  });
+  document.getElementById('rb-brush-inc')?.addEventListener('click', () => {
+    if (typeof window.changeBrushSize === 'function') window.changeBrushSize(1);
+  });
 
   // Document Undo
   const docUndoBtn = document.getElementById('rb-doc-undo-btn');
@@ -528,29 +597,6 @@ function wireRibbonEvents() {
   });
   document.getElementById('rb-zoom-in')?.addEventListener('click', () => {
     if (typeof window.editorZoomBy === 'function') window.editorZoomBy(1);
-  });
-
-  // Focus / Toggle Draw Tools in left panel
-  document.getElementById('rb-focus-draw-tools')?.addEventListener('click', () => {
-    const card = document.querySelector('#tab-editor .card:has(#tool-free), #tab-editor .draw-tools-grid');
-    const side = document.querySelector('#tab-editor .left-panel');
-    if (side && side.style.display === 'none') side.style.display = 'flex';
-    if (card) {
-      card.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      card.style.outline = '2px solid #0078d4';
-      card.style.transition = 'outline 0.3s';
-      setTimeout(() => { card.style.outline = 'none'; }, 1800);
-    }
-    if (window.toast) window.toast('🎨 Bảng Cọ vẽ & Hình khối nằm tại cột trái', 'info', 2000);
-  });
-
-  document.getElementById('rb-toggle-sidebar')?.addEventListener('click', () => {
-    const side = document.querySelector('#tab-editor .left-panel');
-    if (side) {
-      const isHidden = side.style.display === 'none';
-      side.style.display = isHidden ? 'flex' : 'none';
-      if (window.toast) window.toast(isHidden ? 'Đã hiện cột công cụ trái' : 'Đã ẩn cột trái - Mở rộng không gian làm việc', 'info', 1500);
-    }
   });
 
   // Protect
@@ -1534,13 +1580,26 @@ function openFileDropdown(btn) {
   `;
 
   menu.innerHTML = `
-    <div style="padding:4px 14px; font-size:11px; font-weight:bold; color:#6b7280; text-transform:uppercase;">Thao tác Tệp</div>
-    <button class="menu-item" id="f-open-btn" style="width:100%; text-align:left; padding:8px 14px; border:none; background:transparent; cursor:pointer; font-size:12.5px; display:flex; gap:8px;">📁 Mở file PDF mới...</button>
-    <button class="menu-item" id="f-save-btn" style="width:100%; text-align:left; padding:8px 14px; border:none; background:transparent; cursor:pointer; font-size:12.5px; display:flex; gap:8px;">💾 Lưu / Xuất PDF đã sửa</button>
-    <button class="menu-item" id="f-print-btn" style="width:100%; text-align:left; padding:8px 14px; border:none; background:transparent; cursor:pointer; font-size:12.5px; display:flex; gap:8px;">🖨️ In trang đang xem</button>
+    <div style="padding:6px 14px; font-size:11px; font-weight:bold; color:#6b7280; text-transform:uppercase;">Thao tác Tệp (Microsoft Word)</div>
+    <button class="menu-item" id="f-open-btn" style="width:100%; text-align:left; padding:8px 14px; border:none; background:transparent; cursor:pointer; font-size:13px; display:flex; justify-content:space-between; align-items:center;">
+      <span>📂 Mở file PDF mới...</span>
+      <kbd style="font-size:11px; background:#f1f5f9; padding:2px 6px; border-radius:4px; border:1px solid #cbd5e1; color:#475569;">Ctrl + O</kbd>
+    </button>
+    <button class="menu-item" id="f-save-btn" style="width:100%; text-align:left; padding:8px 14px; border:none; background:transparent; cursor:pointer; font-size:13px; display:flex; justify-content:space-between; align-items:center;">
+      <span>💾 Lưu / Xuất PDF đã sửa</span>
+      <kbd style="font-size:11px; background:#f1f5f9; padding:2px 6px; border-radius:4px; border:1px solid #cbd5e1; color:#475569;">Ctrl + S</kbd>
+    </button>
+    <button class="menu-item" id="f-print-btn" style="width:100%; text-align:left; padding:8px 14px; border:none; background:transparent; cursor:pointer; font-size:13px; display:flex; justify-content:space-between; align-items:center;">
+      <span>🖨️ In trang đang xem</span>
+      <kbd style="font-size:11px; background:#f1f5f9; padding:2px 6px; border-radius:4px; border:1px solid #cbd5e1; color:#475569;">Ctrl + P</kbd>
+    </button>
     <div style="height:1px; background:#e2e8f0; margin:6px 0;"></div>
-    <button class="menu-item" id="f-to-tools-btn" style="width:100%; text-align:left; padding:8px 14px; border:none; background:transparent; cursor:pointer; font-size:12.5px; display:flex; gap:8px;">🧰 Chuyển sang Công cụ PDF</button>
-    <button class="menu-item" id="f-to-sign-btn" style="width:100%; text-align:left; padding:8px 14px; border:none; background:transparent; cursor:pointer; font-size:12.5px; display:flex; gap:8px;">✍️ Chuyển sang Ký tên chuyên sâu</button>
+    <button class="menu-item" id="f-to-tools-btn" style="width:100%; text-align:left; padding:8px 14px; border:none; background:transparent; cursor:pointer; font-size:13px; display:flex; gap:8px;">
+      🧰 Chuyển sang Công cụ PDF
+    </button>
+    <button class="menu-item" id="f-to-sign-btn" style="width:100%; text-align:left; padding:8px 14px; border:none; background:transparent; cursor:pointer; font-size:13px; display:flex; gap:8px;">
+      ✍️ Chuyển sang Ký tên chuyên sâu
+    </button>
   `;
 
   document.body.appendChild(menu);
