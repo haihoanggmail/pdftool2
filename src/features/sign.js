@@ -145,54 +145,19 @@ async function openPdf(file) {
   try {
     window.Progress?.show('Đang mở PDF...');
     const bytes = new Uint8Array(await file.arrayBuffer());
-    st.pdf = await window.pdfjsLib.getDocument({ data: bytes.slice(0) }).promise;
+    st.pdf = await window.pdfjsLib.getDocument({ data: bytes.slice(0), isEvalSupported: false }).promise;
     st.bytes = bytes; st.name = file.name.replace(/\.pdf$/i, ''); st.pages = st.pdf.numPages; st.cur = 1; st.ph = []; st.sel = null;
     $('#sg-fileinfo').textContent = `${file.name} · ${st.pages} trang`;
     await renderPage();
   } catch (e) { window.toast?.('Không mở được PDF: ' + (e.message || e), 'error'); }
   finally { window.Progress?.hide(); }
 }
-async function renderPage() {
-  if (!st.pdf) return; const tk = ++st.token;
-  const page = await st.pdf.getPage(st.cur), stage = $('#sg-stage');
-  const base = page.getViewport({ scale: 1 }), fit = Math.min(1.6, Math.max(0.4, (stage.clientWidth - 40) / base.width));
-  const scale = fit * st.zoom, vp = page.getViewport({ scale }), dpr = window.devicePixelRatio || 1;
-  const holder = document.createElement('div'); holder.className = 'sg-page'; holder.style.width = vp.width + 'px'; holder.style.height = vp.height + 'px';
-  const cv = document.createElement('canvas'); cv.width = vp.width * dpr; cv.height = vp.height * dpr; cv.style.width = vp.width + 'px'; cv.style.height = vp.height + 'px';
-  holder.appendChild(cv); holder.addEventListener('pointerdown', (e) => { if (e.target === holder || e.target === cv) { st.sel = null; drawItems(holder); } });
-  await page.render({ canvasContext: cv.getContext('2d'), viewport: vp, transform: dpr !== 1 ? [dpr, 0, 0, dpr, 0, 0] : null }).promise;
-  if (tk !== st.token) return;
-  stage.innerHTML = ''; stage.appendChild(holder); st.holder = holder; drawItems(holder);
-  $('#sg-pageinfo').textContent = `${st.cur} / ${st.pages}`; $('#sg-zinfo').textContent = Math.round(st.zoom * 100) + '%';
-}
-function drawItems(holder) {
-  holder.querySelectorAll('.sg-item').forEach(n => n.remove());
-  const W = holder.clientWidth, H = holder.clientHeight;
-  st.ph.filter(p => p.page === st.cur).forEach(p => {
-    const sig = st.sigs.find(s => s.id === p.sigId) || p.snap; if (!sig) return;
-    const w = p.fw * W, h = w / sig.ar, el = document.createElement('div');
-    el.className = 'sg-item' + (st.sel === p.id ? ' sel' : ''); el.style.cssText = `left:${p.fx * W}px;top:${p.fy * H}px;width:${w}px;height:${h}px`;
-    el.innerHTML = `<img src="${sig.url}" draggable="false"><span class="sg-del" title="Xóa">✕</span><span class="sg-rs"></span>`;
-    el.addEventListener('pointerdown', (e) => {
-      if (e.target.classList.contains('sg-del')) { st.ph = st.ph.filter(x => x.id !== p.id); st.sel = null; return drawItems(holder); }
-      e.stopPropagation(); st.sel = p.id; const resize = e.target.classList.contains('sg-rs');
-      const sx = e.clientX, sy = e.clientY, ox = p.fx, oy = p.fy, ow = p.fw; el.setPointerCapture(e.pointerId);
-      holder.querySelectorAll('.sg-item').forEach(n => n.classList.toggle('sel', n === el));
-      const mv = (ev) => {
-        const dx = (ev.clientX - sx) / W, dy = (ev.clientY - sy) / H;
-        if (resize) p.fw = Math.max(0.04, Math.min(1 - p.fx, ow + dx)); else { p.fx = Math.max(0, Math.min(1 - p.fw, ox + dx)); p.fy = Math.max(0, Math.min(1, oy + dy)); }
-        const ww = p.fw * W; el.style.left = p.fx * W + 'px'; el.style.top = p.fy * H + 'px'; el.style.width = ww + 'px'; el.style.height = ww / sig.ar + 'px';
-      };
-      const up = () => { el.removeEventListener('pointermove', mv); el.removeEventListener('pointerup', up); };
-      el.addEventListener('pointermove', mv); el.addEventListener('pointerup', up);
-    });
-    holder.appendChild(el);
-  });
-}
+
 function addToPage() {
   if (!st.pdf) return window.toast?.('Hãy mở file PDF trước', 'error');
   const sig = st.sigs.find(s => s.id === st.active); if (!sig) return window.toast?.('Hãy tạo hoặc chọn một chữ ký', 'error');
-  const p = { id: uid++, page: st.cur, sigId: sig.id, snap: sig, fw: 0.25, fx: 0.55, fy: 0.8 };
+  // Đặt chữ ký ở vị trí trung tâm trang để người dùng dễ nhìn và kéo thả
+  const p = { id: uid++, page: st.cur, sigId: sig.id, snap: sig, fw: 0.28, fx: 0.36, fy: 0.36 };
   st.ph.push(p); st.sel = p.id; drawItems(st.holder);
 }
 function duplicateAll() {
@@ -201,50 +166,46 @@ function duplicateAll() {
   window.toast?.(`Đã nhân bản sang ${st.pages} trang`, 'success'); drawItems(st.holder);
 }
 
-// ---------- Xuất PDF ----------
-export async function exportSigned() {
-  if (!st.pdf) return window.toast?.('Chưa có file PDF', 'error');
-  if (!st.ph.length) return window.toast?.('Chưa đặt chữ ký nào lên trang', 'error');
+// ---------- Dựng và Xuất PDF đã ký ----------
+async function buildSignedPdfBytes() {
+  if (!st.pdf) throw new Error('Chưa có file PDF');
+  if (!st.ph.length) throw new Error('Chưa đặt chữ ký nào lên trang');
   const { PDFDocument, degrees } = window.PDFLib;
+  window.Progress?.show('Đang tạo PDF đã ký...', 5);
+  const doc = await PDFDocument.load(st.bytes, { ignoreEncryption: true }), emb = {};
+  let n = 0;
+  for (const p of st.ph) {
+    const sig = p.snap || st.sigs.find(s => s.id === p.sigId); if (!sig) continue;
+    if (!emb[sig.id]) emb[sig.id] = await doc.embedPng(sig.url);
+    const jp = await st.pdf.getPage(p.page), vp = jp.getViewport({ scale: 1 }), pg = doc.getPage(p.page - 1);
+    const w = p.fw * vp.width, h = w / sig.ar;
+    const [x, y] = vp.convertToPdfPoint(p.fx * vp.width, p.fy * vp.height + h);
+    pg.drawImage(emb[sig.id], { x, y, width: w, height: h, rotate: degrees(vp.rotation) });
+    window.Progress?.show('Đang tạo PDF đã ký...', 5 + 90 * (++n) / st.ph.length);
+  }
+  return await doc.save();
+}
+
+export async function exportSigned() {
   try {
-    window.Progress?.show('Đang tạo PDF đã ký...', 5);
-    const doc = await PDFDocument.load(st.bytes, { ignoreEncryption: true }), emb = {};
-    let n = 0;
-    for (const p of st.ph) {
-      const sig = p.snap || st.sigs.find(s => s.id === p.sigId); if (!sig) continue;
-      if (!emb[sig.id]) emb[sig.id] = await doc.embedPng(sig.url);
-      const jp = await st.pdf.getPage(p.page), vp = jp.getViewport({ scale: 1 }), pg = doc.getPage(p.page - 1);
-      const w = p.fw * vp.width, h = w / sig.ar;
-      const [x, y] = vp.convertToPdfPoint(p.fx * vp.width, p.fy * vp.height + h);   // góc dưới-trái nhìn thấy được
-      pg.drawImage(emb[sig.id], { x, y, width: w, height: h, rotate: degrees(vp.rotation) });
-      window.Progress?.show('Đang tạo PDF đã ký...', 5 + 90 * (++n) / st.ph.length);
-    }
-    const out = await doc.save(), a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([out], { type: 'application/pdf' })); a.download = st.name + '-signed.pdf'; a.click();
+    const out = await buildSignedPdfBytes();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([out], { type: 'application/pdf' }));
+    a.download = (st.name || 'tailieu') + '-signed.pdf';
+    a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 4000);
-    window.toast?.('Đã xuất ' + a.download, 'success'); try { window.logAction?.('sign_pdf'); } catch (e) {}
-  } catch (e) { window.toast?.('Lỗi xuất PDF: ' + (e.message || e), 'error'); }
-  finally { window.Progress?.hide(); }
+    window.toast?.('Đã xuất ' + a.download, 'success');
+    try { window.logAction?.('sign_pdf'); } catch (e) {}
+  } catch (e) {
+    window.toast?.('Lỗi xuất PDF: ' + (e.message || e), 'error');
+  } finally {
+    window.Progress?.hide();
+  }
 }
 
 export async function exportAndSendToTools() {
-  if (!st.pdf) return window.toast?.('Chưa có file PDF', 'error');
-  if (!st.ph.length) return window.toast?.('Chưa đặt chữ ký nào lên trang', 'error');
-  const { PDFDocument, degrees } = window.PDFLib;
   try {
-    window.Progress?.show('Đang tạo PDF đã ký...', 5);
-    const doc = await PDFDocument.load(st.bytes, { ignoreEncryption: true }), emb = {};
-    let n = 0;
-    for (const p of st.ph) {
-      const sig = p.snap || st.sigs.find(s => s.id === p.sigId); if (!sig) continue;
-      if (!emb[sig.id]) emb[sig.id] = await doc.embedPng(sig.url);
-      const jp = await st.pdf.getPage(p.page), vp = jp.getViewport({ scale: 1 }), pg = doc.getPage(p.page - 1);
-      const w = p.fw * vp.width, h = w / sig.ar;
-      const [x, y] = vp.convertToPdfPoint(p.fx * vp.width, p.fy * vp.height + h);
-      pg.drawImage(emb[sig.id], { x, y, width: w, height: h, rotate: degrees(vp.rotation) });
-      window.Progress?.show('Đang tạo PDF đã ký...', 5 + 90 * (++n) / st.ph.length);
-    }
-    const out = await doc.save();
+    const out = await buildSignedPdfBytes();
     const fileName = (st.name || 'tailieu') + '-signed.pdf';
     const blob = new Blob([out], { type: 'application/pdf' });
     const file = new File([blob], fileName, { type: 'application/pdf' });
@@ -254,8 +215,11 @@ export async function exportAndSendToTools() {
     } else {
       window.toast?.('Không tìm thấy tab Công cụ PDF', 'error');
     }
-  } catch (e) { window.toast?.('Lỗi tạo PDF: ' + (e.message || e), 'error'); }
-  finally { window.Progress?.hide(); }
+  } catch (e) {
+    window.toast?.('Lỗi tạo PDF: ' + (e.message || e), 'error');
+  } finally {
+    window.Progress?.hide();
+  }
 }
 
 export function initSign() {

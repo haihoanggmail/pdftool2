@@ -1,16 +1,34 @@
 // POST /api/track  { action, uid }
 // Chạy ở phía server nên link Google Apps Script nằm trong biến môi trường Vercel (APPS_SCRIPT_URL), không lộ ra trình duyệt.
-//  - Có APPS_SCRIPT_URL  → chuyển tiếp { action } sang Apps Script (giống cách cũ, ghi vào Google Sheet của bạn)
-//  - Có KV_REST_API_*    → đồng thời đếm vào Upstash Redis (xem ở /stats.html)
-// Dùng một trong hai hoặc cả hai; chưa đặt biến nào thì bỏ qua êm.
 import { storeReady, pipeline, ACTIONS, dayKey } from './_store.js';
+
+// Simple in-memory rate limiter per IP / UID (max 60 requests / minute)
+const rateMap = new Map();
+function isRateLimited(key) {
+  const now = Date.now();
+  const win = 60 * 1000;
+  const max = 60;
+  let entry = rateMap.get(key);
+  if (!entry || now - entry.reset > win) {
+    entry = { count: 1, reset: now };
+    rateMap.set(key, entry);
+    // Cleanup old entries
+    if (rateMap.size > 5000) {
+      for (const [k, v] of rateMap.entries()) {
+        if (now - v.reset > win) rateMap.delete(k);
+      }
+    }
+    return false;
+  }
+  entry.count++;
+  return entry.count > max;
+}
 
 async function forwardToAppsScript(action) {
   const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 5000);
   try {
-    // Apps Script trả 302 sang script.googleusercontent.com → để fetch tự theo redirect
     const form = new URLSearchParams({ action });
-    if (process.env.APPS_SCRIPT_KEY) form.set('key', process.env.APPS_SCRIPT_KEY);   // mật khẩu chung với Apps Script (Script property SECRET)
+    if (process.env.APPS_SCRIPT_KEY) form.set('key', process.env.APPS_SCRIPT_KEY);
     await fetch(process.env.APPS_SCRIPT_URL, { method: 'POST', body: form, redirect: 'follow', signal: ctl.signal });
   } finally { clearTimeout(t); }
 }
@@ -24,6 +42,9 @@ async function countInRedis(action, uid) {
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ ok: false });
+  const ip = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown';
+  if (isRateLimited(ip)) return res.status(429).json({ ok: false, error: 'Quá nhiều yêu cầu, vui lòng thử lại sau.' });
+
   let b = req.body;
   if (typeof b === 'string') { try { b = JSON.parse(b); } catch { b = {}; } }
   const action = String(b?.action || ''), uid = String(b?.uid || '').slice(0, 64);
@@ -34,6 +55,6 @@ export default async function handler(req, res) {
   if (storeReady()) jobs.push(countInRedis(action, uid));
   if (!jobs.length) return res.status(202).json({ ok: true, stored: false });
 
-  await Promise.allSettled(jobs);               // lỗi một bên không ảnh hưởng người dùng
+  await Promise.allSettled(jobs);
   res.status(200).json({ ok: true, stored: true });
 }

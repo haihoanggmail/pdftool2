@@ -44,7 +44,7 @@ async function openPdf(file) {
   try {
     window.Progress?.show('Đang mở PDF...');
     st.bytes = new Uint8Array(await file.arrayBuffer());
-    st.pdf = await window.pdfjsLib.getDocument({ data: st.bytes.slice(0) }).promise;
+    st.pdf = await window.pdfjsLib.getDocument({ data: st.bytes.slice(0), isEvalSupported: false }).promise;
     st.name = file.name.replace(/\.pdf$/i, ''); st.pages = st.pdf.numPages; st.cur = 1; st.rects = []; st.sel = null;
     $('#rd-info').textContent = `${file.name} · ${st.pages} trang`; $('#rd-found').textContent = '';
     await renderPage(); updateCount();

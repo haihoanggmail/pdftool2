@@ -15,6 +15,9 @@
         pdf2img: { hint: 'Xuất từng trang PDF thành ảnh PNG hoặc JPG.', accept: 'pdf' },
         img2pdf: { hint: 'Ghép nhiều ảnh (JPG, PNG, WebP...) thành một file PDF.', accept: 'img' },
         ocr: { hint: 'Nhận dạng chữ trên PDF scan, tạo PDF chọn / tìm / copy chữ được. Chạy hoàn toàn trên máy.', accept: 'pdf' },
+        sign: { hint: 'Ký tên điện tử vào PDF: vẽ chữ ký hoặc tải ảnh, tự động xóa nền trắng, kéo thả vị trí.', accept: 'pdf' },
+        form: { hint: 'Điền form AcroForm PDF có sẵn các ô nhập liệu.', accept: 'pdf' },
+        redact: { hint: 'Che đen vĩnh viễn các thông tin nhạy cảm (CCCD, SĐT, Email...) trước khi chia sẻ.', accept: 'pdf' },
         protect: { hint: 'Đặt mật khẩu mở file, giới hạn quyền in, copy, sửa; hoặc gỡ mật khẩu nếu bạn biết mật khẩu.', accept: 'pdf' },
         meta: { hint: 'Xóa hoặc sửa thông tin ẩn trong file: tác giả, phần mềm tạo, ngày tạo...', accept: 'pdf' },
         watermark: { hint: 'Chèn chữ hoặc ảnh mờ lên các trang (một chỗ hoặc lặp kín trang).', accept: 'pdf' },
@@ -410,13 +413,166 @@ self.onmessage = async (ev) => {
         }
     };
 
-    // ----- Canh lề trang (Margin) -----
-    function getOffsets(g, s, dX, dY) {
-        if (g.R === 0) return { tx: dX, ty: dY };
-        if (g.R === 90) return { tx: (1 - s) * g.Wu - dY, ty: dX };
-        if (g.R === 180) return { tx: (1 - s) * g.Wu - dX, ty: (1 - s) * g.Hu - dY };
-        if (g.R === 270) return { tx: dY, ty: (1 - s) * g.Hu - dX };
-        return { tx: dX, ty: dY };
+    // ----- Canh lề trang (Margin) - Hỗ trợ chuẩn MediaBox, mọi góc xoay & nhận diện nội dung -----
+    async function detectPageContentBox(doc, pageNum, g) {
+        try {
+            if (!doc) return null;
+            const jsPage = await doc.getPage(pageNum);
+            const vp = jsPage.getViewport({ scale: 1 });
+            const tc = await jsPage.getTextContent();
+            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+            let textFound = 0;
+            if (tc && tc.items && tc.items.length) {
+                for (const item of tc.items) {
+                    if (!item.str || !item.str.trim()) continue;
+                    const [vx, vy] = vp.convertToViewportPoint(item.transform[4], item.transform[5]);
+                    const w = Math.abs(item.width) || (item.height * 0.6);
+                    const h = Math.abs(item.height) || 10;
+                    const top = vy - h;
+                    const bottom = vy;
+                    const left = vx;
+                    const right = vx + w;
+                    if (left < minX) minX = left;
+                    if (right > maxX) maxX = right;
+                    if (top < minY) minY = top;
+                    if (bottom > maxY) maxY = bottom;
+                    textFound++;
+                }
+            }
+            if (textFound === 0 || textFound < 3) {
+                const scale = Math.min(1.0, 600 / Math.max(vp.width, vp.height));
+                const svp = jsPage.getViewport({ scale });
+                const cv = document.createElement('canvas');
+                cv.width = Math.ceil(svp.width);
+                cv.height = Math.ceil(svp.height);
+                const ctx = cv.getContext('2d', { willReadFrequently: true });
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(0, 0, cv.width, cv.height);
+                await jsPage.render({ canvasContext: ctx, viewport: svp }).promise;
+                const imgData = ctx.getImageData(0, 0, cv.width, cv.height).data;
+                let cMinX = cv.width, cMaxX = 0, cMinY = cv.height, cMaxY = 0;
+                let darkCount = 0;
+                const step = 2;
+                for (let y = 0; y < cv.height; y += step) {
+                    for (let x = 0; x < cv.width; x += step) {
+                        const idx = (y * cv.width + x) * 4;
+                        const r = imgData[idx], gr = imgData[idx + 1], b = imgData[idx + 2];
+                        if (r < 240 || gr < 240 || b < 240) {
+                            darkCount++;
+                            if (x < cMinX) cMinX = x;
+                            if (x > cMaxX) cMaxX = x;
+                            if (y < cMinY) cMinY = y;
+                            if (y > cMaxY) cMaxY = y;
+                        }
+                    }
+                }
+                if (darkCount > 15) {
+                    const k = 1 / scale;
+                    minX = Math.min(minX, cMinX * k);
+                    maxX = Math.max(maxX, cMaxX * k);
+                    minY = Math.min(minY, cMinY * k);
+                    maxY = Math.max(maxY, cMaxY * k);
+                    textFound += darkCount;
+                }
+            }
+            if (textFound > 0 && Number.isFinite(minX) && maxX > minX + 8 && maxY > minY + 8) {
+                const vBottom = Math.max(0, g.H - maxY);
+                const vTop = Math.min(g.H, g.H - minY);
+                return {
+                    left: Math.max(0, minX),
+                    right: Math.min(g.W, maxX),
+                    bottom: vBottom,
+                    top: vTop,
+                    width: Math.max(10, Math.min(g.W, maxX) - Math.max(0, minX)),
+                    height: Math.max(10, vTop - vBottom)
+                };
+            }
+        } catch (e) {
+            console.warn('Lỗi nhận diện vùng nội dung trang ' + pageNum, e);
+        }
+        return null;
+    }
+
+    function applyPageMarginTransform(page, g, o, contentBox) {
+        const { mL, mR, mT, mB, mode, align } = o;
+        const box = (contentBox && o.trimWhitespace) ? contentBox : {
+            left: 0,
+            right: g.W,
+            bottom: 0,
+            top: g.H,
+            width: g.W,
+            height: g.H
+        };
+
+        let targetW, targetH, s, scaledW, scaledH, dX, dY;
+
+        if (mode === 'expand') {
+            targetW = box.width + mL + mR;
+            targetH = box.height + mT + mB;
+            s = 1.0;
+            scaledW = box.width;
+            scaledH = box.height;
+            dX = mL;
+            dY = mB;
+        } else if (mode === 'a4') {
+            const isLand = g.W > g.H;
+            targetW = isLand ? 841.89 : 595.28;
+            targetH = isLand ? 595.28 : 841.89;
+            const availW = Math.max(10, targetW - mL - mR);
+            const availH = Math.max(10, targetH - mT - mB);
+            s = Math.min(availW / box.width, availH / box.height, 1.0);
+            scaledW = box.width * s;
+            scaledH = box.height * s;
+            dX = mL + (availW - scaledW) / 2;
+            dY = mB + (availH - scaledH) / 2;
+            if (align === 'top') dY = targetH - mT - scaledH;
+            else if (align === 'bottom') dY = mB;
+        } else {
+            // mode === 'scale' (Mặc định: thu nhỏ vừa khổ gốc)
+            targetW = g.W;
+            targetH = g.H;
+            const availW = Math.max(10, targetW - mL - mR);
+            const availH = Math.max(10, targetH - mT - mB);
+            s = Math.min(availW / box.width, availH / box.height, 1.0);
+            scaledW = box.width * s;
+            scaledH = box.height * s;
+            dX = mL + (availW - scaledW) / 2;
+            dY = mB + (availH - scaledH) / 2;
+            if (align === 'top') dY = targetH - mT - scaledH;
+            else if (align === 'bottom') dY = mB;
+        }
+
+        const targetWu = (g.R === 90 || g.R === 270) ? targetH : targetW;
+        const targetHu = (g.R === 90 || g.R === 270) ? targetW : targetH;
+        page.setSize(targetWu, targetHu);
+        page.setMediaBox(0, 0, targetWu, targetHu);
+
+        // Visual offset to map box's bottom-left to (dX, dY):
+        const shiftX = dX - s * box.left;
+        const shiftY = dY - s * box.bottom;
+
+        // Unrotated translations matching PDF CTM rules and non-(0,0) MediaBox:
+        let tx = 0, ty = 0;
+        const mbX = g.mb.x || 0, mbY = g.mb.y || 0;
+
+        if (g.R === 0) {
+            tx = shiftX - s * mbX;
+            ty = shiftY - s * mbY;
+        } else if (g.R === 90) {
+            tx = targetWu - s * (mbX + g.Wu) - shiftY;
+            ty = shiftX - s * mbY;
+        } else if (g.R === 180) {
+            tx = targetWu - s * (mbX + g.Wu) - shiftX;
+            ty = targetHu - s * (mbY + g.Hu) - shiftY;
+        } else if (g.R === 270) {
+            tx = shiftY - s * mbX;
+            ty = targetHu - s * (mbY + g.Hu) - shiftX;
+        }
+
+        if (s !== 1.0) {
+            page.scaleContent(s, s);
+        }
+        page.translateContent(tx, ty);
     }
 
     TOOLS.margin = {
@@ -435,15 +591,20 @@ self.onmessage = async (ev) => {
             const bottom = toPt($('tl-mg-bottom').value);
             const mode = $('tl-mg-mode').value;
             const mirror = $('tl-mg-mirror').checked;
+            const trimWhitespace = $('tl-mg-trim-whitespace') ? $('tl-mg-trim-whitespace').checked : true;
             const align = $('tl-mg-align').value;
             const scope = $('tl-mg-scope').value;
             const pagesStr = $('tl-mg-pages').value;
 
-            return { left, right, top, bottom, mode, mirror, align, scope, pagesStr, unit };
+            return { left, right, top, bottom, mode, mirror, trimWhitespace, align, scope, pagesStr, unit };
         },
         async run(it, o) {
             setProgress(null, 'Đang mở file PDF...');
             const pdf = await loadLib(it);
+            let jsDoc = null;
+            if (o.trimWhitespace) {
+                try { jsDoc = await openPdfJs(it); } catch (e) { jsDoc = null; }
+            }
             const pgs = pdf.getPages();
             const total = pgs.length;
             if (!total) throw new Error('File không có trang nào.');
@@ -475,56 +636,23 @@ self.onmessage = async (ev) => {
                     mR = o.left;
                 }
 
-                if (o.mode === 'expand') {
-                    const newW = g.W + mL + mR;
-                    const newH = g.H + mT + mB;
-                    const newWu = (g.R === 90 || g.R === 270) ? newH : newW;
-                    const newHu = (g.R === 90 || g.R === 270) ? newW : newH;
-                    page.setSize(newWu, newHu);
-
-                    const dX = mL;
-                    const dY = mB;
-                    const offsets = getOffsets(g, 1, dX, dY);
-                    page.translateContent(offsets.tx, offsets.ty);
-                } else if (o.mode === 'a4') {
-                    const isLand = g.W > g.H;
-                    const targetW = isLand ? 841.89 : 595.28;
-                    const targetH = isLand ? 595.28 : 841.89;
-                    const availW = Math.max(10, targetW - mL - mR);
-                    const availH = Math.max(10, targetH - mT - mB);
-                    const s = Math.min(availW / g.W, availH / g.H);
-
-                    const scaledW = g.W * s;
-                    const scaledH = g.H * s;
-                    let dX = mL + (availW - scaledW) / 2;
-                    let dY = mB + (availH - scaledH) / 2;
-                    if (o.align === 'top') dY = targetH - mT - scaledH;
-                    else if (o.align === 'bottom') dY = mB;
-
-                    const targetWu = (g.R === 90 || g.R === 270) ? targetH : targetW;
-                    const targetHu = (g.R === 90 || g.R === 270) ? targetW : targetH;
-                    page.setSize(targetWu, targetHu);
-                    page.scaleContent(s, s);
-                    const offsets = getOffsets(g, s, dX, dY);
-                    page.translateContent(offsets.tx, offsets.ty);
-                } else {
-                    // mode === 'scale' (Mặc định: thu nhỏ vừa khổ gốc)
-                    const availW = Math.max(10, g.W - mL - mR);
-                    const availH = Math.max(10, g.H - mT - mB);
-                    const s = Math.min(availW / g.W, availH / g.H);
-
-                    const scaledW = g.W * s;
-                    const scaledH = g.H * s;
-                    let dX = mL + (availW - scaledW) / 2;
-                    let dY = mB + (availH - scaledH) / 2;
-                    if (o.align === 'top') dY = g.H - mT - scaledH;
-                    else if (o.align === 'bottom') dY = mB;
-
-                    page.scaleContent(s, s);
-                    const offsets = getOffsets(g, s, dX, dY);
-                    page.translateContent(offsets.tx, offsets.ty);
+                let contentBox = null;
+                if (o.trimWhitespace && jsDoc) {
+                    contentBox = await detectPageContentBox(jsDoc, i + 1, g);
                 }
+
+                applyPageMarginTransform(page, g, {
+                    mL, mR, mT, mB,
+                    mode: o.mode,
+                    align: o.align,
+                    trimWhitespace: o.trimWhitespace
+                }, contentBox);
+
                 await new Promise(r => setTimeout(r, 0));
+            }
+
+            if (jsDoc) {
+                try { jsDoc.destroy(); } catch (e) {}
             }
 
             setProgress(95, 'Đang lưu file PDF...');
@@ -1607,6 +1735,9 @@ self.onmessage = async (ev) => {
     // ---------- Chọn công cụ ----------
     function selectTool(name) {
         if (!INFO[name]) return;
+        if (name === 'sign') { if (window.switchTab) window.switchTab('tab-sign'); return; }
+        if (name === 'form') { if (window.switchTab) window.switchTab('tab-form'); return; }
+        if (name === 'redact') { if (window.switchTab) window.switchTab('tab-redact'); return; }
         tool = name;
         $('tl-tool').value = name;
         document.querySelectorAll('#tab-tools .tl-opts').forEach(d => d.style.display = d.dataset.tool === name ? 'block' : 'none');

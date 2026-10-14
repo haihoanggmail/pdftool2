@@ -1892,6 +1892,12 @@ document.addEventListener('keydown', function(e) {
     if ((e.ctrlKey || e.metaKey) && _k === 'o') {
         e.preventDefault();
         document.getElementById('editor-file-input')?.click();
+    } else if ((e.ctrlKey || e.metaKey) && _k === 'b') {
+        e.preventDefault();
+        if (typeof editorToggleBold === 'function') editorToggleBold();
+    } else if ((e.ctrlKey || e.metaKey) && _k === 'i') {
+        e.preventDefault();
+        if (typeof editorToggleItalic === 'function') editorToggleItalic();
     } else if ((e.ctrlKey || e.metaKey) && !e.shiftKey && _k === 'c') {
         if (editorCopySelection()) e.preventDefault();
     } else if ((e.ctrlKey || e.metaKey) && !e.shiftKey && _k === 'v') {
@@ -2473,6 +2479,26 @@ function bindAddedTextEvents(span, id) {
     });
 }
 
+function isRibbonOrPicker(el) {
+    if (!el) return false;
+    return !!(
+        (el.closest && (
+            el.closest('#word-ribbon-bar') ||
+            el.closest('.word-ribbon') ||
+            el.closest('#rb-panels-container') ||
+            el.closest('.ribbon-group') ||
+            el.closest('.ribbon-tabs-bar')
+        )) ||
+        el.id === 'editor-text-color' ||
+        el.id === 'editor-text-size' ||
+        el.id === 'editor-text-font' ||
+        el.id === 'rb-bold-btn' ||
+        el.id === 'rb-italic-btn' ||
+        el.id === 'rb-font-inc' ||
+        el.id === 'rb-font-dec'
+    );
+}
+
 function openAddedTextEditor(entry, pos) {
     const layer = document.getElementById('editor-text-layer');
     if (layer.querySelector('.editing-input')) return;
@@ -2487,16 +2513,16 @@ function openAddedTextEditor(entry, pos) {
         left = vx; baseline = vy;
     } else {
         fontKey = fontKeyOf({ fontFamily: fontSel && fontSel.value });
-        size = parseFloat(sizeInput.value);
+        size = parseFloat(sizeInput ? sizeInput.value : 12);
         if (!(size >= 4 && size <= 200)) size = 12;
-        color = colorPicker.value || '#000000';
+        color = (colorPicker && colorPicker.value) || '#000000';
         bold = false; italic = false; text = '';
         left = pos.x;
         baseline = pos.y + addedK(fontKey) * size * editorScale;
     }
     if (fontSel) fontSel.value = fontKey;
-    colorPicker.value = color;
-    sizeInput.value = String(Math.round(size * 10) / 10);
+    if (colorPicker) colorPicker.value = color;
+    if (sizeInput) sizeInput.value = String(Math.round(size * 10) / 10);
     if (entry) {
         const sp = layer.querySelector(`.added-text[data-added-id="${entry.id}"]`);
         if (sp) sp.style.visibility = 'hidden';
@@ -2519,7 +2545,43 @@ function openAddedTextEditor(entry, pos) {
         _measureCtx.font = `${italic ? 'italic ' : ''}${bold ? 'bold ' : ''}${size * editorScale}px ${fontCss(fontKey)}`;
         const w = _measureCtx.measureText(input.value || ' ').width;
         input.style.width = `${Math.max(120, Math.ceil(w) + 30)}px`;
+        if (typeof notifyEditorSelection === 'function') notifyEditorSelection();
     };
+
+    input._toggleBold = () => {
+        bold = !bold;
+        input.classList.toggle('is-bold', bold);
+        applySize();
+    };
+    input._toggleItalic = () => {
+        italic = !italic;
+        input.classList.toggle('is-italic', italic);
+        applySize();
+    };
+    input._setSize = (newSize) => {
+        size = newSize;
+        applySize();
+    };
+    input._setFont = (newKey) => {
+        fontKey = fontKeyOf({ fontFamily: newKey });
+        applyFontToEl(input, fontKey);
+        applySize();
+    };
+    input._setColor = (newColor) => {
+        color = newColor;
+        input.style.setProperty('--txt-color', color);
+        if (typeof notifyEditorSelection === 'function') notifyEditorSelection();
+    };
+    input._getFormat = () => ({
+        isEditing: true,
+        hasSelection: true,
+        isBold: bold,
+        isItalic: italic,
+        color: color,
+        fontSize: size,
+        fontKey: fontKey
+    });
+
     applySize();
     layer.appendChild(input);
     input.focus();
@@ -2546,23 +2608,31 @@ function openAddedTextEditor(entry, pos) {
         fontSel.addEventListener('change', onFont);
         fontSel.addEventListener('blur', endPick);
     }
-    colorPicker.addEventListener('mousedown', onPickDown);
-    colorPicker.addEventListener('input', onColor);
-    colorPicker.addEventListener('change', onColorChange);
-    colorPicker.addEventListener('blur', endPick);
-    sizeInput.addEventListener('mousedown', onPickDown);
-    sizeInput.addEventListener('input', onSize);
-    sizeInput.addEventListener('keydown', onSizeKey);
-    sizeInput.addEventListener('blur', endPick);
+    if (colorPicker) {
+        colorPicker.addEventListener('mousedown', onPickDown);
+        colorPicker.addEventListener('input', onColor);
+        colorPicker.addEventListener('change', onColorChange);
+        colorPicker.addEventListener('blur', endPick);
+    }
+    if (sizeInput) {
+        sizeInput.addEventListener('mousedown', onPickDown);
+        sizeInput.addEventListener('input', onSize);
+        sizeInput.addEventListener('keydown', onSizeKey);
+        sizeInput.addEventListener('blur', endPick);
+    }
     const cleanup = () => {
-        colorPicker.removeEventListener('mousedown', onPickDown);
-        colorPicker.removeEventListener('input', onColor);
-        colorPicker.removeEventListener('change', onColorChange);
-        colorPicker.removeEventListener('blur', endPick);
-        sizeInput.removeEventListener('mousedown', onPickDown);
-        sizeInput.removeEventListener('input', onSize);
-        sizeInput.removeEventListener('keydown', onSizeKey);
-        sizeInput.removeEventListener('blur', endPick);
+        if (colorPicker) {
+            colorPicker.removeEventListener('mousedown', onPickDown);
+            colorPicker.removeEventListener('input', onColor);
+            colorPicker.removeEventListener('change', onColorChange);
+            colorPicker.removeEventListener('blur', endPick);
+        }
+        if (sizeInput) {
+            sizeInput.removeEventListener('mousedown', onPickDown);
+            sizeInput.removeEventListener('input', onSize);
+            sizeInput.removeEventListener('keydown', onSizeKey);
+            sizeInput.removeEventListener('blur', endPick);
+        }
         if (fontSel) {
             fontSel.removeEventListener('mousedown', onPickDown);
             fontSel.removeEventListener('change', onFont);
@@ -2590,6 +2660,7 @@ function openAddedTextEditor(entry, pos) {
         }
         buildAddedTexts(layer);
         recordHistory();
+        if (typeof notifyEditorSelection === 'function') notifyEditorSelection();
     };
     const cancel = () => {
         if (done) return;
@@ -2597,6 +2668,7 @@ function openAddedTextEditor(entry, pos) {
         cleanup();
         input.remove();
         buildAddedTexts(layer);
+        if (typeof notifyEditorSelection === 'function') notifyEditorSelection();
     };
     input.addEventListener('input', applySize);
     input.addEventListener('keydown', e => {
@@ -2609,8 +2681,8 @@ function openAddedTextEditor(entry, pos) {
     });
     input.addEventListener('blur', e => {
         if (pickerBusy) return;
-        const rt = e.relatedTarget;
-        if (rt && (rt === colorPicker || rt === sizeInput || rt === fontSel)) return;
+        const rt = e.relatedTarget || document.activeElement;
+        if (isRibbonOrPicker(rt)) return;
         commit();
     });
 }
@@ -2642,13 +2714,403 @@ function applySelHighlight() {
     const layer = document.getElementById('editor-text-layer');
     if (!layer) return;
     layer.querySelectorAll('.sel-hl').forEach(n => n.classList.remove('sel-hl'));
-    if (!editorSel || editorSel.page !== editorPage) return;
+    if (!editorSel || editorSel.page !== editorPage) {
+        if (typeof notifyEditorSelection === 'function') notifyEditorSelection();
+        return;
+    }
     let el = null;
     if (editorSel.type === 'tidx') el = layer.querySelector(`span[data-tidx="${editorSel.index}"]`);
     else if (editorSel.type === 'added') el = layer.querySelector(`span[data-added-id="${editorSel.id}"]`);
     else if (editorSel.type === 'img') el = layer.querySelector(`.editor-img-box[data-img-key="${editorSel.key}"]`);
     if (el) el.classList.add('sel-hl');
+    if (typeof notifyEditorSelection === 'function') notifyEditorSelection();
 }
+
+function updateModifiedItemFormatting(index, span, changes) {
+    const key = `${editorPage}_${index}`;
+    const existingIndex = modifiedTexts.findIndex(item => item.key === key);
+    const originalItem = span._item;
+    const tx = originalItem ? pdfjsLib.Util.transform(editorViewport.transform, originalItem.transform) : [1, 0, 0, 1, 0, 0];
+    const prev = existingIndex !== -1 ? modifiedTexts[existingIndex] : null;
+    const sampled = prev && prev.color ? { color: prev.color, bg: prev.bgColor } : (originalItem ? sampleTextColors(originalItem) : { color: '#000000', bg: '#ffffff' });
+    const htmlLeft = parseFloat(span.style.left) || tx[4] || 0;
+    const curSize = changes.fontSize !== undefined ? changes.fontSize : (span._ptSize || (prev && prev.fontSize) || (originalItem ? originalItem.height : 12));
+    const baselineVp = (parseFloat(span.style.top) || (tx[5] - (originalItem ? originalItem.height : curSize) * editorScale)) + curSize * editorScale;
+    const [pdfX, pdfY] = editorViewport.convertToPdfPoint(htmlLeft, baselineVp);
+
+    const curColor = changes.color !== undefined ? changes.color : ((prev && prev.color) || span.style.getPropertyValue('--txt-color') || sampled.color || '#000000');
+    const curFont = changes.fontFamily !== undefined ? changes.fontFamily : ((prev && prev.fontFamily) || fontKeyOf({ fontFamily: span.style.fontFamily || (originalItem && originalItem.fontName) }));
+    const curBold = changes.isBold !== undefined ? changes.isBold : span.classList.contains('is-bold');
+    const curItalic = changes.isItalic !== undefined ? changes.isItalic : span.classList.contains('is-italic');
+
+    const changeData = {
+        key: key, _seq: ++editorSeq,
+        page: editorPage,
+        color: curColor,
+        bgColor: (prev && prev.bgColor) || sampled.bg || '#ffffff',
+        index: index,
+        text: (prev && prev.text) || span.textContent,
+        origX: originalItem ? originalItem.transform[4] : (prev ? prev.origX : 0),
+        origY: originalItem ? originalItem.transform[5] : (prev ? prev.origY : 0),
+        origWidth: originalItem ? originalItem.width : (prev ? prev.origWidth : 0),
+        origHeight: originalItem ? originalItem.height : (prev ? prev.origHeight : 0),
+        x: pdfX,
+        y: pdfY,
+        fontSize: curSize,
+        htmlLeft: htmlLeft,
+        htmlTop: baselineVp - curSize * editorScale,
+        isBold: curBold,
+        isItalic: curItalic,
+        fontFamily: curFont,
+        preserveOriginalFormatting: false
+    };
+
+    if (existingIndex !== -1) {
+        modifiedTexts[existingIndex] = { ...modifiedTexts[existingIndex], ...changeData };
+    } else {
+        modifiedTexts.push(changeData);
+    }
+}
+
+function editorGetSelectedFormatting() {
+    const layer = document.getElementById('editor-text-layer');
+    if (!layer) return { hasSelection: false, isEditing: false };
+    const input = layer.querySelector('.editing-input');
+    if (input && typeof input._getFormat === 'function') {
+        return input._getFormat();
+    }
+    if (editorSel && editorSel.page === editorPage) {
+        if (editorSel.type === 'added') {
+            const a = addedTexts.find(t => t.id === editorSel.id);
+            if (a) {
+                return {
+                    isEditing: false, hasSelection: true,
+                    isBold: !!a.isBold, isItalic: !!a.isItalic,
+                    color: a.color || '#000000',
+                    fontSize: a.fontSize || 12,
+                    fontKey: a.fontFamily || 'roboto'
+                };
+            }
+        } else if (editorSel.type === 'tidx') {
+            const sp = layer.querySelector(`span[data-tidx="${editorSel.index}"]`);
+            if (sp) {
+                const key = `${editorPage}_${editorSel.index}`;
+                const m = modifiedTexts.find(item => item.key === key);
+                const isBold = sp.classList.contains('is-bold');
+                const isItalic = sp.classList.contains('is-italic');
+                const color = (m && m.color) || sp.style.getPropertyValue('--txt-color') || (sp._item && sampleTextColors(sp._item).color) || '#000000';
+                const fontSize = (m && m.fontSize) || sp._ptSize || (sp._item && sp._item.height) || 12;
+                const fontKey = (m && m.fontFamily) || (sp._item && fontKeyOf({ fontFamily: sp.style.fontFamily || sp._item.fontName })) || 'roboto';
+                return { isEditing: false, hasSelection: true, isBold, isItalic, color, fontSize, fontKey };
+            }
+        }
+    }
+    const regionSpans = Array.from(layer.querySelectorAll('span[data-tidx].region-selected'));
+    if (regionSpans.length) {
+        const sp = regionSpans[0];
+        const isBold = sp.classList.contains('is-bold');
+        const isItalic = sp.classList.contains('is-italic');
+        const color = sp.style.getPropertyValue('--txt-color') || (sp._item && sampleTextColors(sp._item).color) || '#000000';
+        const fontSize = sp._ptSize || (sp._item && sp._item.height) || 12;
+        const fontKey = (sp._item && fontKeyOf({ fontFamily: sp.style.fontFamily || sp._item.fontName })) || 'roboto';
+        return { isEditing: false, hasSelection: true, isBold, isItalic, color, fontSize, fontKey };
+    }
+    return { hasSelection: false, isEditing: false };
+}
+
+function notifyEditorSelection() {
+    if (typeof window.onEditorSelectionChange === 'function') {
+        window.onEditorSelectionChange(editorGetSelectedFormatting());
+    }
+}
+window.notifyEditorSelection = notifyEditorSelection;
+window.editorGetSelectedFormatting = editorGetSelectedFormatting;
+
+function editorToggleBold() {
+    const layer = document.getElementById('editor-text-layer');
+    if (!layer) return;
+    const activeInput = layer.querySelector('.editing-input');
+    if (activeInput && typeof activeInput._toggleBold === 'function') {
+        activeInput._toggleBold();
+        activeInput.focus();
+        return;
+    }
+    if (editorSel && editorSel.page === editorPage) {
+        if (editorSel.type === 'added') {
+            const a = addedTexts.find(t => t.id === editorSel.id);
+            if (a) {
+                a.isBold = !a.isBold;
+                const sp = layer.querySelector(`span[data-added-id="${editorSel.id}"]`);
+                if (sp) sp.classList.toggle('is-bold', a.isBold);
+                recordHistory();
+                notifyEditorSelection();
+                return;
+            }
+        } else if (editorSel.type === 'tidx') {
+            const index = editorSel.index;
+            const sp = layer.querySelector(`span[data-tidx="${index}"]`);
+            if (sp && sp._item) {
+                const b = !sp.classList.contains('is-bold');
+                sp.classList.toggle('is-bold', b);
+                sp.classList.add('modified');
+                const tx = pdfjsLib.Util.transform(editorViewport.transform, sp._item.transform);
+                maskOriginalPosition(index, sp._item, tx);
+                updateModifiedItemFormatting(index, sp, { isBold: b });
+                recordHistory();
+                notifyEditorSelection();
+                return;
+            }
+        }
+    }
+    const regionSpans = Array.from(layer.querySelectorAll('span[data-tidx].region-selected'));
+    if (regionSpans.length) {
+        const anyNotBold = regionSpans.some(s => !s.classList.contains('is-bold'));
+        regionSpans.forEach(sp => {
+            const index = parseInt(sp.getAttribute('data-tidx'), 10);
+            sp.classList.toggle('is-bold', anyNotBold);
+            sp.classList.add('modified');
+            if (sp._item) {
+                const tx = pdfjsLib.Util.transform(editorViewport.transform, sp._item.transform);
+                maskOriginalPosition(index, sp._item, tx);
+                updateModifiedItemFormatting(index, sp, { isBold: anyNotBold });
+            }
+        });
+        recordHistory();
+        notifyEditorSelection();
+        return;
+    }
+}
+window.editorToggleBold = editorToggleBold;
+
+function editorToggleItalic() {
+    const layer = document.getElementById('editor-text-layer');
+    if (!layer) return;
+    const activeInput = layer.querySelector('.editing-input');
+    if (activeInput && typeof activeInput._toggleItalic === 'function') {
+        activeInput._toggleItalic();
+        activeInput.focus();
+        return;
+    }
+    if (editorSel && editorSel.page === editorPage) {
+        if (editorSel.type === 'added') {
+            const a = addedTexts.find(t => t.id === editorSel.id);
+            if (a) {
+                a.isItalic = !a.isItalic;
+                const sp = layer.querySelector(`span[data-added-id="${editorSel.id}"]`);
+                if (sp) sp.classList.toggle('is-italic', a.isItalic);
+                recordHistory();
+                notifyEditorSelection();
+                return;
+            }
+        } else if (editorSel.type === 'tidx') {
+            const index = editorSel.index;
+            const sp = layer.querySelector(`span[data-tidx="${index}"]`);
+            if (sp && sp._item) {
+                const it = !sp.classList.contains('is-italic');
+                sp.classList.toggle('is-italic', it);
+                sp.classList.add('modified');
+                const tx = pdfjsLib.Util.transform(editorViewport.transform, sp._item.transform);
+                maskOriginalPosition(index, sp._item, tx);
+                updateModifiedItemFormatting(index, sp, { isItalic: it });
+                recordHistory();
+                notifyEditorSelection();
+                return;
+            }
+        }
+    }
+    const regionSpans = Array.from(layer.querySelectorAll('span[data-tidx].region-selected'));
+    if (regionSpans.length) {
+        const anyNotItalic = regionSpans.some(s => !s.classList.contains('is-italic'));
+        regionSpans.forEach(sp => {
+            const index = parseInt(sp.getAttribute('data-tidx'), 10);
+            sp.classList.toggle('is-italic', anyNotItalic);
+            sp.classList.add('modified');
+            if (sp._item) {
+                const tx = pdfjsLib.Util.transform(editorViewport.transform, sp._item.transform);
+                maskOriginalPosition(index, sp._item, tx);
+                updateModifiedItemFormatting(index, sp, { isItalic: anyNotItalic });
+            }
+        });
+        recordHistory();
+        notifyEditorSelection();
+        return;
+    }
+}
+window.editorToggleItalic = editorToggleItalic;
+
+function editorSetFontSize(size) {
+    if (isNaN(size) || size < 4 || size > 200) return;
+    const layer = document.getElementById('editor-text-layer');
+    if (!layer) return;
+    const activeInput = layer.querySelector('.editing-input');
+    if (activeInput && typeof activeInput._setSize === 'function') {
+        activeInput._setSize(size);
+        return;
+    }
+    if (editorSel && editorSel.page === editorPage) {
+        if (editorSel.type === 'added') {
+            const a = addedTexts.find(t => t.id === editorSel.id);
+            if (a) {
+                a.fontSize = size;
+                const sp = layer.querySelector(`span[data-added-id="${editorSel.id}"]`);
+                if (sp) {
+                    sp.style.fontSize = `${size * editorScale}px`;
+                    const [_vx, vy] = editorViewport.convertToViewportPoint(a.x, a.y);
+                    sp.style.top = `${vy - addedK(fontKeyOf(a)) * size * editorScale}px`;
+                }
+                recordHistory();
+                notifyEditorSelection();
+                return;
+            }
+        } else if (editorSel.type === 'tidx') {
+            const index = editorSel.index;
+            const sp = layer.querySelector(`span[data-tidx="${index}"]`);
+            if (sp && sp._item) {
+                const oldSize = sp._ptSize || (sp._item && sp._item.height) || 12;
+                sp._ptSize = size;
+                sp.style.fontSize = `${size * editorScale}px`;
+                const tx = pdfjsLib.Util.transform(editorViewport.transform, sp._item.transform);
+                const baselineVp = (parseFloat(sp.style.top) || (tx[5] - oldSize * editorScale)) + oldSize * editorScale;
+                sp.style.top = `${baselineVp - size * editorScale}px`;
+                sp.classList.add('modified');
+                maskOriginalPosition(index, sp._item, tx);
+                updateModifiedItemFormatting(index, sp, { fontSize: size });
+                recordHistory();
+                notifyEditorSelection();
+                return;
+            }
+        }
+    }
+    const regionSpans = Array.from(layer.querySelectorAll('span[data-tidx].region-selected'));
+    if (regionSpans.length) {
+        regionSpans.forEach(sp => {
+            const index = parseInt(sp.getAttribute('data-tidx'), 10);
+            const oldSize = sp._ptSize || (sp._item && sp._item.height) || 12;
+            sp._ptSize = size;
+            sp.style.fontSize = `${size * editorScale}px`;
+            if (sp._item) {
+                const tx = pdfjsLib.Util.transform(editorViewport.transform, sp._item.transform);
+                const baselineVp = (parseFloat(sp.style.top) || (tx[5] - oldSize * editorScale)) + oldSize * editorScale;
+                sp.style.top = `${baselineVp - size * editorScale}px`;
+                sp.classList.add('modified');
+                maskOriginalPosition(index, sp._item, tx);
+                updateModifiedItemFormatting(index, sp, { fontSize: size });
+            }
+        });
+        recordHistory();
+        notifyEditorSelection();
+        return;
+    }
+}
+window.editorSetFontSize = editorSetFontSize;
+
+function editorSetFontFamily(key) {
+    if (!key) return;
+    const layer = document.getElementById('editor-text-layer');
+    if (!layer) return;
+    const activeInput = layer.querySelector('.editing-input');
+    if (activeInput && typeof activeInput._setFont === 'function') {
+        activeInput._setFont(key);
+        return;
+    }
+    if (editorSel && editorSel.page === editorPage) {
+        if (editorSel.type === 'added') {
+            const a = addedTexts.find(t => t.id === editorSel.id);
+            if (a) {
+                a.fontFamily = key;
+                const sp = layer.querySelector(`span[data-added-id="${editorSel.id}"]`);
+                if (sp) applyFontToEl(sp, key);
+                recordHistory();
+                notifyEditorSelection();
+                return;
+            }
+        } else if (editorSel.type === 'tidx') {
+            const index = editorSel.index;
+            const sp = layer.querySelector(`span[data-tidx="${index}"]`);
+            if (sp && sp._item) {
+                applyFontToEl(sp, key);
+                sp.classList.add('modified');
+                const tx = pdfjsLib.Util.transform(editorViewport.transform, sp._item.transform);
+                maskOriginalPosition(index, sp._item, tx);
+                updateModifiedItemFormatting(index, sp, { fontFamily: key });
+                recordHistory();
+                notifyEditorSelection();
+                return;
+            }
+        }
+    }
+    const regionSpans = Array.from(layer.querySelectorAll('span[data-tidx].region-selected'));
+    if (regionSpans.length) {
+        regionSpans.forEach(sp => {
+            const index = parseInt(sp.getAttribute('data-tidx'), 10);
+            applyFontToEl(sp, key);
+            sp.classList.add('modified');
+            if (sp._item) {
+                const tx = pdfjsLib.Util.transform(editorViewport.transform, sp._item.transform);
+                maskOriginalPosition(index, sp._item, tx);
+                updateModifiedItemFormatting(index, sp, { fontFamily: key });
+            }
+        });
+        recordHistory();
+        notifyEditorSelection();
+        return;
+    }
+}
+window.editorSetFontFamily = editorSetFontFamily;
+
+function editorSetTextColor(color) {
+    if (!color) return;
+    const layer = document.getElementById('editor-text-layer');
+    if (!layer) return;
+    const activeInput = layer.querySelector('.editing-input');
+    if (activeInput && typeof activeInput._setColor === 'function') {
+        activeInput._setColor(color);
+        return;
+    }
+    if (editorSel && editorSel.page === editorPage) {
+        if (editorSel.type === 'added') {
+            const a = addedTexts.find(t => t.id === editorSel.id);
+            if (a) {
+                a.color = color;
+                const sp = layer.querySelector(`span[data-added-id="${editorSel.id}"]`);
+                if (sp) sp.style.setProperty('--txt-color', color);
+                recordHistory();
+                notifyEditorSelection();
+                return;
+            }
+        } else if (editorSel.type === 'tidx') {
+            const index = editorSel.index;
+            const sp = layer.querySelector(`span[data-tidx="${index}"]`);
+            if (sp && sp._item) {
+                sp.style.setProperty('--txt-color', color);
+                sp.classList.add('modified');
+                const tx = pdfjsLib.Util.transform(editorViewport.transform, sp._item.transform);
+                maskOriginalPosition(index, sp._item, tx);
+                updateModifiedItemFormatting(index, sp, { color: color });
+                recordHistory();
+                notifyEditorSelection();
+                return;
+            }
+        }
+    }
+    const regionSpans = Array.from(layer.querySelectorAll('span[data-tidx].region-selected'));
+    if (regionSpans.length) {
+        regionSpans.forEach(sp => {
+            const index = parseInt(sp.getAttribute('data-tidx'), 10);
+            sp.style.setProperty('--txt-color', color);
+            sp.classList.add('modified');
+            if (sp._item) {
+                const tx = pdfjsLib.Util.transform(editorViewport.transform, sp._item.transform);
+                maskOriginalPosition(index, sp._item, tx);
+                updateModifiedItemFormatting(index, sp, { color: color });
+            }
+        });
+        recordHistory();
+        notifyEditorSelection();
+        return;
+    }
+}
+window.editorSetTextColor = editorSetTextColor;
 
 (function bindSelection() {
     const layer = document.getElementById('editor-text-layer');
@@ -2949,9 +3411,10 @@ function resetHistory() {
 }
 
 function updateHistoryButtons() {
-    const u = document.getElementById('editor-undo-btn'), r = document.getElementById('editor-redo-btn');
-    if (u) u.disabled = !(editorHistIndex > 0);
-    if (r) r.disabled = !(editorHistIndex < editorHistStack.length - 1);
+    const canUndo = editorHistIndex > 0;
+    const canRedo = editorHistIndex < editorHistStack.length - 1;
+    document.querySelectorAll('#editor-undo-btn, #rb-undo-btn').forEach(u => u.disabled = !canUndo);
+    document.querySelectorAll('#editor-redo-btn, #rb-redo-btn').forEach(r => r.disabled = !canRedo);
 }
 
 function restoreSnapshot(sn, goPage) {
@@ -3230,25 +3693,70 @@ function makeEditable(span, originalItem, index, tx) {
         _measureCtx.font = `${input.classList.contains('is-italic') ? 'italic ' : ''}${input.classList.contains('is-bold') ? 'bold ' : ''}${parseFloat(input.style.fontSize)}px ${measureFont}`;
         const w = _measureCtx.measureText(input.value || ' ').width;
         input.style.width = Math.max(span.offsetWidth, Math.ceil(w)) + 30 + 'px';
+        if (typeof notifyEditorSelection === 'function') notifyEditorSelection();
     };
     let editColor = (_prevMod && _prevMod.color) || sampleTextColors(originalItem).color;
     const colorPicker = document.getElementById('editor-text-color');
-    colorPicker.value = editColor;
+    if (colorPicker) colorPicker.value = editColor;
     input.style.setProperty('--txt-color', editColor);
+
+    input._toggleBold = () => {
+        input.classList.toggle('is-bold');
+        span.classList.toggle('is-bold');
+        fitWidth();
+        if (typeof notifyEditorSelection === 'function') notifyEditorSelection();
+    };
+    input._toggleItalic = () => {
+        input.classList.toggle('is-italic');
+        span.classList.toggle('is-italic');
+        fitWidth();
+        if (typeof notifyEditorSelection === 'function') notifyEditorSelection();
+    };
+    input._setSize = (newSize) => {
+        editSize = newSize;
+        input.style.fontSize = `${newSize * editorScale}px`;
+        input.style.top = `${baselineVp - newSize * editorScale}px`;
+        fitWidth();
+        if (typeof notifyEditorSelection === 'function') notifyEditorSelection();
+    };
+    input._setFont = (newKey) => {
+        editFont = fontKeyOf({ fontFamily: newKey });
+        fontWasChanged = true;
+        applyFontToEl(input, editFont);
+        fitWidth();
+        if (typeof notifyEditorSelection === 'function') notifyEditorSelection();
+    };
+    input._setColor = (newColor) => {
+        editColor = newColor;
+        input.style.setProperty('--txt-color', editColor);
+        if (typeof notifyEditorSelection === 'function') notifyEditorSelection();
+    };
+    input._getFormat = () => ({
+        isEditing: true,
+        hasSelection: true,
+        isBold: input.classList.contains('is-bold'),
+        isItalic: input.classList.contains('is-italic'),
+        color: editColor,
+        fontSize: editSize,
+        fontKey: editFont
+    });
+
     let pickerBusy = false, saved = false;
     const onPickDown = () => { pickerBusy = true; };
     const onPick = () => { editColor = colorPicker.value; input.style.setProperty('--txt-color', editColor); };
     const endPick = () => { setTimeout(() => { pickerBusy = false; if (input.isConnected) input.focus(); }, 0); };
     const onPickChange = () => { onPick(); endPick(); };
-    colorPicker.addEventListener('mousedown', onPickDown);
-    colorPicker.addEventListener('input', onPick);
-    colorPicker.addEventListener('change', onPickChange);
-    colorPicker.addEventListener('blur', endPick);
+    if (colorPicker) {
+        colorPicker.addEventListener('mousedown', onPickDown);
+        colorPicker.addEventListener('input', onPick);
+        colorPicker.addEventListener('change', onPickChange);
+        colorPicker.addEventListener('blur', endPick);
+    }
     const startSize = span._ptSize || originalItem.height;
     let editSize = startSize;
     const baselineVp = parseFloat(span.style.top) + startSize * editorScale;
     const sizeInput = document.getElementById('editor-text-size');
-    sizeInput.value = String(Math.round(startSize * 10) / 10);
+    if (sizeInput) sizeInput.value = String(Math.round(startSize * 10) / 10);
     const onSize = () => {
         const v = parseFloat(sizeInput.value);
         if (!(v >= 4 && v <= 200)) return;
@@ -3257,10 +3765,12 @@ function makeEditable(span, originalItem, index, tx) {
         input.style.top = `${baselineVp - v * editorScale}px`;
     };
     const onSizeKey = e => { if (e.key === 'Enter') { e.preventDefault(); input.focus(); saveChange(); } };
-    sizeInput.addEventListener('mousedown', onPickDown);
-    sizeInput.addEventListener('input', onSize);
-    sizeInput.addEventListener('keydown', onSizeKey);
-    sizeInput.addEventListener('blur', endPick);
+    if (sizeInput) {
+        sizeInput.addEventListener('mousedown', onPickDown);
+        sizeInput.addEventListener('input', onSize);
+        sizeInput.addEventListener('keydown', onSizeKey);
+        sizeInput.addEventListener('blur', endPick);
+    }
     const onFont = () => {
         editFont = fontKeyOf({ fontFamily: fontSel.value });
         fontWasChanged = true;
@@ -3288,23 +3798,29 @@ function makeEditable(span, originalItem, index, tx) {
         if (isB) {
             input.classList.toggle('is-bold');
             span.classList.toggle('is-bold');
+            fitWidth();
         }
         if (isI) {
             input.classList.toggle('is-italic');
             span.classList.toggle('is-italic');
+            fitWidth();
         }
     });
     const saveChange = () => {
         if (saved) return;
         saved = true;
-        colorPicker.removeEventListener('mousedown', onPickDown);
-        colorPicker.removeEventListener('input', onPick);
-        colorPicker.removeEventListener('change', onPickChange);
-        colorPicker.removeEventListener('blur', endPick);
-        sizeInput.removeEventListener('mousedown', onPickDown);
-        sizeInput.removeEventListener('input', onSize);
-        sizeInput.removeEventListener('keydown', onSizeKey);
-        sizeInput.removeEventListener('blur', endPick);
+        if (colorPicker) {
+            colorPicker.removeEventListener('mousedown', onPickDown);
+            colorPicker.removeEventListener('input', onPick);
+            colorPicker.removeEventListener('change', onPickChange);
+            colorPicker.removeEventListener('blur', endPick);
+        }
+        if (sizeInput) {
+            sizeInput.removeEventListener('mousedown', onPickDown);
+            sizeInput.removeEventListener('input', onSize);
+            sizeInput.removeEventListener('keydown', onSizeKey);
+            sizeInput.removeEventListener('blur', endPick);
+        }
         if (fontSel) {
             fontSel.removeEventListener('mousedown', onPickDown);
             fontSel.removeEventListener('change', onFont);
@@ -3361,11 +3877,12 @@ function makeEditable(span, originalItem, index, tx) {
             modifiedTexts.push(changeData);
         }
         recordHistory();
+        if (typeof notifyEditorSelection === 'function') notifyEditorSelection();
     };
     input.addEventListener('blur', e => {
         if (pickerBusy) return;
-        const rt = e.relatedTarget;
-        if (rt && (rt === colorPicker || rt === sizeInput || rt === fontSel)) return;
+        const rt = e.relatedTarget || document.activeElement;
+        if (isRibbonOrPicker(rt)) return;
         saveChange();
     });
     input.addEventListener('keydown', e => {

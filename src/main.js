@@ -7,6 +7,27 @@ import { initRedact } from './features/redact.js';
 import { initEditorWordRibbon } from './features/editorWordRibbon.js';
 import { initAuth } from './features/auth.js';
 
+// Bảo mật: vá lỗ hổng CVE-2024-4367 trong pdfjs-dist bằng cách tắt hoàn toàn eval
+(function patchPdfJsEvalSecurity() {
+  function applyPatch() {
+    if (window.pdfjsLib && window.pdfjsLib.getDocument && !window.pdfjsLib.__evalPatched) {
+      const originalGetDocument = window.pdfjsLib.getDocument;
+      window.pdfjsLib.getDocument = function (src) {
+        if (typeof src === 'string' || src instanceof URL) {
+          src = { url: String(src), isEvalSupported: false };
+        } else if (src && typeof src === 'object') {
+          if (src.isEvalSupported === undefined) src.isEvalSupported = false;
+        }
+        return originalGetDocument.apply(this, arguments);
+      };
+      window.pdfjsLib.__evalPatched = true;
+    }
+  }
+  applyPatch();
+  document.addEventListener('DOMContentLoaded', applyPatch);
+  window.addEventListener('load', applyPatch);
+})();
+
 // ---------- Toast ----------
 const toastBox = Object.assign(document.createElement('div'), { id: 'toast-box' });
 document.body.appendChild(toastBox);
@@ -32,7 +53,17 @@ window.Progress = {
 
 // ---------- Kéo thả file vào bất kỳ đâu ----------
 const activeTabId = () => document.querySelector('.tab-content.active')?.id;
-const targets = { 'tab-main': 'file-input', 'tab-merge': 'merge-input', 'tab-editor': 'editor-file-input', 'tab-word': 'w2d-input', 'tab-excel': 'w2x-input', 'tab-sign': 'sg-pdf', 'tab-form': 'fm-pdf', 'tab-redact': 'rd-pdf' };
+const targets = {
+  'tab-main': 'file-input',
+  'tab-merge': 'merge-input',
+  'tab-editor': 'editor-file-input',
+  'tab-word': 'w2d-input',
+  'tab-excel': 'w2x-input',
+  'tab-sign': 'sg-pdf',
+  'tab-form': 'fm-pdf',
+  'tab-redact': 'rd-pdf',
+  'tab-tools': 'tl-input'
+};
 const overlay = Object.assign(document.createElement('div'), { id: 'drop-overlay', textContent: '📥 Thả file PDF / ảnh vào đây' });
 document.body.appendChild(overlay);
 let depth = 0;

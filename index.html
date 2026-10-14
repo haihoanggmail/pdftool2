@@ -36,7 +36,6 @@
         <div class="nav-right-actions" style="margin-left:auto; display:flex; align-items:center; gap:8px;">
             <button class="theme-toggle" id="theme-toggle" onclick="toggleTheme()" title="Chuyển chế độ Sáng / Tối" aria-label="Chuyển chế độ Sáng / Tối">🌙 Chế độ tối</button>
             <button class="theme-toggle" id="clear-session-btn" style="margin-left:0;" onclick="clearSavedSession()" title="Xóa file và thao tác đã được lưu tự động trong trình duyệt">🗑️ Xóa dữ liệu</button>
-            <button class="nav-login-btn" id="nav-login-btn" onclick="openLoginModal()" title="Đăng nhập tài khoản">🔐 Đăng nhập</button>
         </div>
     </div>
 
@@ -300,18 +299,15 @@
 
         <div class="editor-layout">
             <div class="editor-main" style="width:100%; flex:1;">
-			<div class="editor-pagebar" style="position: sticky; bottom: 0; z-index: 100; background: white; box-shadow: 0 -2px 10px rgba(0,0,0,0.05); width: 100%; box-sizing: border-box;">
+			<div class="editor-pagebar" style="position: sticky; bottom: 0; z-index: 100; background: white; box-shadow: 0 -2px 10px rgba(0,0,0,0.05); width: 100%; box-sizing: border-box; display:flex; align-items:center; gap:8px;">
                     <button class="btn btn-small" onclick="editorChangePage(-1)">◀ Trước</button>
-                    <span id="editor-page-indicator" style="font-weight:bold">0 / 0</span>
+                    <span id="editor-page-indicator" style="font-weight:bold; min-width:44px; text-align:center;">0 / 0</span>
                     <button class="btn btn-small" onclick="editorChangePage(1)">Sau ▶</button>
-                    <button class="btn btn-small btn-tool" id="editor-undo-btn" onclick="editorUndo()" title="Ctrl + Z" disabled>↩ Hoàn tác</button>
-                    <button class="btn btn-small btn-tool" id="editor-redo-btn" onclick="editorRedo()" title="Ctrl + Y" disabled>↪ Làm lại</button>
+                    <span style="border-left:1px solid #cbd5e1; height:18px; margin:0 4px;"></span>
                     <button class="btn btn-small btn-tool" onclick="editorZoomBy(-1)" title="Thu nhỏ">➖</button>
                     <span id="editor-zoom-label" style="font-weight:bold; min-width:44px; text-align:center;">100%</span>
                     <button class="btn btn-small btn-tool" onclick="editorZoomBy(1)" title="Phóng to">➕</button>
                     <button class="btn btn-small btn-tool" onclick="editorZoomFit()" title="Vừa chiều ngang khung">↔ Vừa khung</button>
-					<button class="btn btn-small btn-warning" onclick="editorExportPDF()" style="margin-left: 15px;">🖨️ Xuất file Pdf</button>
-                    <button class="btn btn-small btn-warning" onclick="printEditorStage()" style="margin-left: 15px;">🖨️ IN TRANG NÀY</button>
                 </div>
 				
                 <div class="editor-stage-scroll">
@@ -478,7 +474,10 @@
                             <option value="img2pdf">📄 Ảnh → PDF</option>
                             <option value="ocr">🔍 OCR: PDF scan → PDF tìm kiếm được</option>
                         </optgroup>
-                        <optgroup label="Bảo mật">
+                        <optgroup label="Biểu mẫu &amp; Chữ ký &amp; Bảo mật">
+                            <option value="sign">✍️ Ký tên PDF (Chữ ký điện tử / vẽ / ảnh)</option>
+                            <option value="form">📝 Điền form PDF (AcroForm)</option>
+                            <option value="redact">🛡️ Che thông tin nhạy cảm (Redact)</option>
                             <option value="protect">🔒 Đặt / gỡ mật khẩu</option>
                             <option value="meta">🧹 Xóa / sửa metadata</option>
                         </optgroup>
@@ -731,6 +730,11 @@
                         </label>
                         <p class="editor-hint" style="margin-top:-2px; margin-bottom:6px;">Trang lẻ (1, 3, 5...): lề trái là gáy sách; Trang chẵn (2, 4, 6...): lề phải là gáy sách.</p>
 
+                        <label class="tl-ck" style="font-weight:600; color:#0369a1;">
+                            <input type="checkbox" id="tl-mg-trim-whitespace" checked> 🎯 Tự nhận diện nội dung (bỏ lề trắng cũ để lề đo ra đúng số mm bạn nhập)
+                        </label>
+                        <p class="editor-hint" style="margin-top:-2px; margin-bottom:6px;">Tự động cắt lề trắng cũ của tài liệu trước khi đặt lề mới, tránh bị cộng dồn mép giấy làm chữ nhỏ đi.</p>
+
                         <div class="tl-grid2">
                             <div>
                                 <label class="tl-lb">Căn chỉnh nội dung:</label>
@@ -982,8 +986,8 @@
                 Hỗ trợ kỹ thuật: Hải Hoàng 09-1800-1944
             </p>
 
-            <p id="intro-auth-notice" style="font-size:13.5px; color:#b45309; background:#fffbeb; padding:8px 14px; border-radius:6px; border:1px solid #fde68a; display:inline-flex; align-items:center; gap:8px; margin:4px 0 14px 0; font-weight:600;">
-                ⭐ các tính năng cơ bản miễn phí để sử dụng các tính năng nâng cao cấp vui lòng đăng nhập
+            <p id="intro-auth-notice" style="font-size:13.5px; color:#166534; background:#f0fdf4; padding:8px 14px; border-radius:6px; border:1px solid #86efac; display:inline-flex; align-items:center; gap:8px; margin:4px 0 14px 0; font-weight:600;">
+                🎉 <b>Miễn phí 100% cho mọi người</b> — Toàn bộ tính năng cao cấp (Chuỗi liên hoàn, Ký tên, Canh lề NĐ30...) đều mở sẵn trên máy bạn.
             </p>
 
             <p style="font-size:13px;">
@@ -1073,6 +1077,20 @@
 <script src="vendor/pdf-lib.min.js"></script>
 <script src="vendor/fontkit.umd.min.js"></script>
 <script src="vendor/pdf.min.js"></script>
+<script>
+// Vá bảo mật CVE-2024-4367: Tắt hoàn toàn eval / Dynamic execution trong pdf.js
+if (window.pdfjsLib && typeof window.pdfjsLib.getDocument === 'function') {
+  const _origGetDoc = window.pdfjsLib.getDocument.bind(window.pdfjsLib);
+  window.pdfjsLib.getDocument = function(src) {
+    if (typeof src === 'object' && src !== null && !(src instanceof Uint8Array) && !(src instanceof ArrayBuffer)) {
+      src.isEvalSupported = false;
+    } else {
+      src = { data: src, isEvalSupported: false };
+    }
+    return _origGetDoc(src);
+  };
+}
+</script>
 <script src="legacy/00-fonts-meta.js"></script>
 <script src="legacy/10-core.js"></script>
 <script src="legacy/20-a.js"></script>

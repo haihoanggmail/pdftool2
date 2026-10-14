@@ -76,16 +76,17 @@ function buildRibbonHTML() {
           <div class="ribbon-group-body">
             <div class="rb-column">
               <div class="rb-row">
-                <select id="editor-text-font" class="rb-select" style="width:140px;" title="Phông chữ"></select>
-                <input type="number" id="editor-text-size" class="rb-input-num" value="12" min="4" max="200" step="0.5" title="Cỡ chữ (pt)">
-                <span style="font-size:11px;color:#666;">pt</span>
-                <button class="rb-btn-compact btn-tool" id="editor-local-font-btn" onclick="loadLocalFontList()" title="Quét font có sẵn trong máy tính">🔍 Font máy</button>
+                <select id="editor-text-font" class="rb-select" style="width:130px;" title="Phông chữ"></select>
+                <input type="number" id="editor-text-size" class="rb-input-num" value="12" min="4" max="200" step="0.5" title="Cỡ chữ (pt)" style="width:48px;">
+                <button class="rb-btn-compact" id="rb-font-inc" title="Tăng cỡ chữ (A+)" style="padding:1px 5px; font-weight:700;">A▲</button>
+                <button class="rb-btn-compact" id="rb-font-dec" title="Giảm cỡ chữ (A-)" style="padding:1px 5px; font-weight:700;">A▼</button>
+                <button class="rb-btn-compact btn-tool" id="editor-local-font-btn" onclick="loadLocalFontList()" title="Quét font có sẵn trong máy tính">🔍 Font</button>
               </div>
               <div class="rb-row" style="margin-top:2px;">
                 <button class="rb-btn-compact" id="rb-bold-btn" style="font-weight:900;" title="In đậm (Ctrl+B)">𝗕</button>
-                <button class="rb-btn-compact" id="rb-italic-btn" style="font-style:italic;" title="In nghiêng (Ctrl+I)">𝐼</button>
+                <button class="rb-btn-compact" id="rb-italic-btn" style="font-style:italic; font-family:serif;" title="In nghiêng (Ctrl+I)">𝐼</button>
                 <span style="font-size:11px;color:#555;margin-left:4px;">Màu chữ:</span>
-                <input type="color" id="editor-text-color" value="#000000" style="width:28px;height:24px;padding:0;border:1px solid #cbd5e1;cursor:pointer;" title="Màu chữ">
+                <input type="color" id="editor-text-color" value="#000000" style="width:28px;height:24px;padding:0;border:1px solid #cbd5e1;cursor:pointer;border-radius:3px;" title="Màu chữ">
               </div>
             </div>
           </div>
@@ -228,6 +229,9 @@ function buildRibbonHTML() {
               </select>
               <label style="font-size:11px;display:flex;align-items:center;gap:4px;cursor:pointer;">
                 <input type="checkbox" id="rb-mg-mirror"> Đối xứng 2 mặt
+              </label>
+              <label style="font-size:11px;display:flex;align-items:center;gap:4px;cursor:pointer;color:#0284c7;" title="Tự động nhận diện nội dung thực để bỏ lề trắng cũ, đảm bảo lề đo ra đúng số mm bạn nhập">
+                <input type="checkbox" id="rb-mg-trim-whitespace" checked> Bỏ lề trắng cũ
               </label>
             </div>
 
@@ -497,19 +501,89 @@ function wireRibbonEvents() {
     document.getElementById('editor-file-input')?.click();
   });
 
-  // Bold & Italic
+  // Formatting buttons & controls
   const boldBtn = document.getElementById('rb-bold-btn');
-  if (boldBtn) {
-    boldBtn.addEventListener('click', () => {
-      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'b', ctrlKey: true }));
-    });
-  }
   const italicBtn = document.getElementById('rb-italic-btn');
-  if (italicBtn) {
-    italicBtn.addEventListener('click', () => {
-      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'i', ctrlKey: true }));
-    });
-  }
+  const sizeInput = document.getElementById('editor-text-size');
+  const colorPicker = document.getElementById('editor-text-color');
+  const fontIncBtn = document.getElementById('rb-font-inc');
+  const fontDecBtn = document.getElementById('rb-font-dec');
+
+  // Sync ribbon formatting with active selection/editor
+  window.onEditorSelectionChange = function(info) {
+    if (!info) return;
+    if (boldBtn) boldBtn.classList.toggle('active', !!info.isBold);
+    if (italicBtn) italicBtn.classList.toggle('active', !!info.isItalic);
+    if (sizeInput && info.fontSize) {
+      sizeInput.value = String(Math.round(info.fontSize * 10) / 10);
+    }
+    if (fontSel && info.fontKey) {
+      fontSel.value = info.fontKey;
+    }
+    if (colorPicker && info.color) {
+      colorPicker.value = info.color;
+    }
+  };
+
+  // Prevent input blur when clicking formatting buttons
+  [boldBtn, italicBtn, fontIncBtn, fontDecBtn].forEach(btn => {
+    btn?.addEventListener('mousedown', (e) => e.preventDefault());
+  });
+
+  // Bold & Italic click handlers
+  boldBtn?.addEventListener('click', () => {
+    if (typeof window.editorToggleBold === 'function') {
+      window.editorToggleBold();
+    }
+  });
+
+  italicBtn?.addEventListener('click', () => {
+    if (typeof window.editorToggleItalic === 'function') {
+      window.editorToggleItalic();
+    }
+  });
+
+  // Font Size input & step buttons
+  const applySizeChange = (val) => {
+    if (val >= 4 && val <= 200 && typeof window.editorSetFontSize === 'function') {
+      window.editorSetFontSize(val);
+    }
+  };
+  sizeInput?.addEventListener('input', () => applySizeChange(parseFloat(sizeInput.value)));
+  sizeInput?.addEventListener('change', () => applySizeChange(parseFloat(sizeInput.value)));
+
+  fontIncBtn?.addEventListener('click', () => {
+    const cur = parseFloat(sizeInput?.value) || 12;
+    const next = Math.min(200, cur + (cur < 20 ? 1 : 2));
+    if (sizeInput) sizeInput.value = String(next);
+    applySizeChange(next);
+  });
+
+  fontDecBtn?.addEventListener('click', () => {
+    const cur = parseFloat(sizeInput?.value) || 12;
+    const next = Math.max(4, cur - (cur <= 20 ? 1 : 2));
+    if (sizeInput) sizeInput.value = String(next);
+    applySizeChange(next);
+  });
+
+  // Font family selector change
+  fontSel?.addEventListener('change', () => {
+    if (typeof window.editorSetFontFamily === 'function') {
+      window.editorSetFontFamily(fontSel.value);
+    }
+  });
+
+  // Color picker change
+  colorPicker?.addEventListener('input', () => {
+    if (typeof window.editorSetTextColor === 'function') {
+      window.editorSetTextColor(colorPicker.value);
+    }
+  });
+  colorPicker?.addEventListener('change', () => {
+    if (typeof window.editorSetTextColor === 'function') {
+      window.editorSetTextColor(colorPicker.value);
+    }
+  });
 
   // Undo / Redo
   const undoBtn = document.getElementById('editor-undo-btn');
