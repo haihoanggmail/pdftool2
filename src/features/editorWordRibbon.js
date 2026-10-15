@@ -615,6 +615,7 @@ function buildRibbonHTML() {
               <select id="rb-comp-level" class="rb-select" style="width:110px;">
                 <option value="balanced">Cân bằng</option>
                 <option value="strong">Nén mạnh</option>
+                <option value="extreme">Cực mạnh</option>
               </select>
             </div>
             <button class="rb-btn-large" id="rb-apply-compress-btn" title="Giảm dung lượng file PDF trực tiếp">
@@ -2342,19 +2343,25 @@ export async function applyCompressToEditor() {
   if (window.Progress) window.Progress.show('Đang tối ưu hóa dung lượng PDF...', null);
 
   try {
-    const pdfDoc = await PDFLib.PDFDocument.load(currentBytes);
-    // Strip metadata and compress cross-reference streams
-    pdfDoc.setTitle('');
-    pdfDoc.setAuthor('');
-    pdfDoc.setProducer('Hachihi PDF');
-
-    const outBytes = await pdfDoc.save({ useObjectStreams: true });
+    const level = document.getElementById('rb-comp-level')?.value || 'balanced';
     const oldKb = Math.round(currentBytes.byteLength / 1024);
+    let outBytes = currentBytes, note = '';
+    if (typeof window.compressPdfBytes === 'function') {
+      const r = await window.compressPdfBytes(currentBytes, level, window.getEditorFileName && window.getEditorFileName());
+      outBytes = r.bytes; note = r.note;
+      if (!r.changed) {
+        if (window.toast) window.toast('File đã được tối ưu tối đa, giữ nguyên (' + oldKb + 'KB).', 'info');
+        return;
+      }
+    } else {
+      const pdfDoc = await PDFLib.PDFDocument.load(currentBytes);
+      outBytes = await pdfDoc.save({ useObjectStreams: true });
+    }
     const newKb = Math.round(outBytes.byteLength / 1024);
 
     await window.editorLoadBytes(outBytes, window.getEditorFileName(), true);
     if (window.toast) {
-      window.toast(`✓ Đã nén PDF: ${oldKb}KB → ${newKb}KB!`, 'success');
+      window.toast(`Đã nén PDF: ${oldKb}KB → ${newKb}KB (giảm ${Math.round((1 - newKb / oldKb) * 100)}%)`, 'success');
     }
   } catch (err) {
     if (window.toast) window.toast('Lỗi nén PDF: ' + err.message, 'error');

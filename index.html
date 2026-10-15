@@ -639,6 +639,7 @@
                                         <option value="balanced" selected>Cân bằng (khuyên dùng)</option>
                                         <option value="light">Nhẹ (giữ nét cao)</option>
                                         <option value="strong">Mạnh (ảnh nhỏ hơn)</option>
+                                        <option value="extreme">Cực mạnh (nhỏ nhất)</option>
                                     </select>
                                 </div>
                             </div>
@@ -806,7 +807,8 @@
                         <select id="tl-comp-level" class="tl-in" onchange="window.onCompressLevelChange && window.onCompressLevelChange(this.value)">
                             <option value="preserve">🛡️ Chế độ A: Nén bảo toàn nội dung (Giữ 100% vector & chữ, tối ưu cấu trúc)</option>
                             <option value="balanced" selected>⚖️ Chế độ B: Nén cân bằng (Khuyên dùng - Nén ảnh nhúng, giữ nét chữ)</option>
-                            <option value="strong">🗜️ Chế độ C: Nén mạnh (Nén sâu ảnh nhúng, giảm dung lượng tối đa)</option>
+                            <option value="strong">⚡ Chế độ C: Nén mạnh (ảnh ~110 dpi, giảm dung lượng nhiều)</option>
+                            <option value="extreme">🔥 Nén cực mạnh (ảnh ~72 dpi, nhỏ nhất, chất lượng ảnh thấp hơn)</option>
                             <option value="raster">🖼️ Chế độ C (Rasterize): Chuyển trang thành ảnh (Tài liệu scan / File cực nhỏ)</option>
                         </select>
                         <div id="tl-comp-raster-warn" style="display:none; background:#fff1f2; border:1px solid #f43f5e; border-radius:6px; padding:8px 10px; margin-top:8px; font-size:11px; color:#9f1239; line-height:1.4;">
