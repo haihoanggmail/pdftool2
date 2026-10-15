@@ -1760,6 +1760,9 @@ let editorSeq = 0;
 let editorCurrentTool = 'text';
 
 let editorShapes = [];
+let editorSigs = [];
+let editorSigSel = null;
+let editorSigSeq = 0;
 
 let isDrawingShape = false;
 
@@ -2081,6 +2084,7 @@ async function editorLoadFile(input) {
         modifiedTexts = [];
         modifiedImages = [];
         editorShapes = [];
+        editorSigs = [];
         addedTexts = [];
         editorPage = 1;
         resetHistory();
@@ -2179,6 +2183,7 @@ async function _editorRenderPageImpl() {
         setImgStatus('⚠ Không dò được ảnh trên trang này: ' + (e && e.message ? e.message : e));
     }
     buildImageCopyBoxes(textLayerDiv);
+    if (typeof buildSigBoxes === 'function') buildSigBoxes(textLayerDiv);
     applySelHighlight();
     redrawPageShapes();
 }
@@ -3387,9 +3392,10 @@ function snapshotState() {
         t: modifiedTexts.map(o => Object.assign({}, o)),
         i: modifiedImages.map(o => Object.assign({}, o)),
         a: addedTexts.map(o => Object.assign({}, o)),
-        s: editorShapes.map(cloneShape)
+        s: editorShapes.map(cloneShape),
+        g: editorSigs.map(o => Object.assign({}, o))
     };
-    sn.sig = JSON.stringify([ sn.t, sn.i, sn.a, sn.s.map(o => { const c = Object.assign({}, o); delete c.vp; return c; }) ]);
+    sn.sig = JSON.stringify([ sn.t, sn.i, sn.a, sn.s.map(o => { const c = Object.assign({}, o); delete c.vp; return c; }), sn.g.map(o => [ o.id, o.page, o.x, o.y, o.w, o.h ]) ]);
     return sn;
 }
 
@@ -3424,6 +3430,7 @@ function restoreSnapshot(sn, goPage) {
         modifiedImages = sn.i.map(o => Object.assign({}, o));
         addedTexts = sn.a.map(o => Object.assign({}, o));
         editorShapes = sn.s.map(o => rescaleShape(cloneShape(o), sn.scale, editorScale));
+        editorSigs = (sn.g || []).map(o => Object.assign({}, o));
         if (goPage && editorPdfJsDoc && goPage >= 1 && goPage <= editorPdfJsDoc.numPages) editorPage = goPage;
     } finally {
         editorHistRestoring = false;
@@ -4144,6 +4151,7 @@ async function editorExportPDF(captureCb) {
                 pageObj.drawText(safeText(raw, f), { x: a.x, y: a.y, size: a.fontSize, font: f, color: PDFLib.rgb(c.r, c.g, c.b) });
             } catch (e) { failedItems++; console.error('Lỗi vẽ chữ thêm mới:', e); }
         });
+        if (editorSigs.length && typeof editorDrawSigsOnPdf === 'function') failedItems += await editorDrawSigsOnPdf(pdfDoc, pages);
         editorShapes.forEach(shape => {
             const pageObj = pages[shape.page - 1];
             if (!pageObj) { failedItems++; console.error('Không tìm thấy trang cho hình vẽ:', shape.page); return; }
@@ -4437,6 +4445,7 @@ window.editorLoadBytes = async function(bytes, fileName, preservePage = false) {
     modifiedTexts = [];
     modifiedImages = [];
     editorShapes = [];
+    editorSigs = [];
     addedTexts = [];
     const prevPage = editorPage || 1;
     resetHistory();
@@ -4490,6 +4499,7 @@ window.getEditorCurrentPdfBytes = async function() {
     const hasCanvasEdits = (modifiedTexts && modifiedTexts.length > 0) ||
                            (addedTexts && addedTexts.length > 0) ||
                            (editorShapes && editorShapes.length > 0) ||
+                           (editorSigs && editorSigs.length > 0) ||
                            (modifiedImages && modifiedImages.length > 0);
     if (!hasCanvasEdits) {
         return new Uint8Array(editorPdfDataBytes.slice(0));

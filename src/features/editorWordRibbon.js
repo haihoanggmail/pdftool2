@@ -2629,45 +2629,15 @@ export function openSignatureModal() {
 }
 
 async function stampSignatureOnCurrentPage(pngBytes) {
-  const currentBytes = await getEditorBytesOrAlert();
-  if (!currentBytes) return;
-
-  const curPage = typeof window.getEditorPage === 'function' ? window.getEditorPage() : 1;
-  pushDocUndoState('Ký tên');
-  if (window.Progress) window.Progress.show('Đang chèn chữ ký lên trang...', null);
-
+  // Chữ ký là đối tượng độc lập trên trang (kéo/đổi cỡ/xoá được), chỉ ghép vào PDF khi xuất file.
   try {
-    const pdfDoc = await PDFLib.PDFDocument.load(currentBytes);
-    const pages = pdfDoc.getPages();
-    const page = pages[curPage - 1];
-    if (!page) throw new Error('Không tìm thấy trang ' + curPage);
-
-    const sigImage = await pdfDoc.embedPng(pngBytes);
-    const { width: W, height: H } = page.getSize();
-    const sigW = 160;
-    const sigH = sigW * (sigImage.height / sigImage.width);
-
-    // Place signature nicely at lower-right section (standard signature location)
-    const posX = W - sigW - 60;
-    const posY = 100;
-
-    page.drawImage(sigImage, {
-      x: posX,
-      y: posY,
-      width: sigW,
-      height: sigH
-    });
-
-    const outBytes = await pdfDoc.save();
-    await window.editorLoadBytes(outBytes, window.getEditorFileName(), true);
-    if (window.toast) {
-      window.toast(`✍️ Đã chèn chữ ký thành công vào trang ${curPage}!`, 'success');
-    }
+    if (typeof window.editorAddSignature !== 'function') throw new Error('Chưa nạp module chữ ký');
+    const ok = await window.editorAddSignature(pngBytes);
+    if (ok && window.toast) window.toast('Đã thêm chữ ký. Kéo để di chuyển, kéo góc phải dưới để đổi cỡ, nhấn ✕ hoặc Delete để xoá.', 'success');
   } catch (err) {
     console.error('Lỗi chèn chữ ký:', err);
     if (window.toast) window.toast('Lỗi chèn chữ ký: ' + err.message, 'error');
   } finally {
-    if (window.Progress) window.Progress.hide();
     updateRibbonDocState();
   }
 }

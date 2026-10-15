@@ -226,6 +226,8 @@
             cv.height = Math.max(1, Math.round(vp.height));
             await page.render({ canvasContext: cv.getContext('2d'), viewport: vp }).promise;
             if (tok !== slot._tok || doc !== editorPdfJsDoc) return;
+            await loadSigImgs(n);
+            if (tok !== slot._tok || doc !== editorPdfJsDoc) return;
             try { overlayEdits(cv, vp, n, scale); } catch (e) { console.warn('mp overlay', e); }
             if (tok !== slot._tok || n === editorPage) return;
             clearPreview(slot);
@@ -257,6 +259,12 @@
             drawText(ctx, vp, a.text, a.x, a.y, a.fontSize, scale, a, k);
         });
 
+        editorSigs.forEach(function (g) {
+            if (g.page !== n || !g._img) return;
+            var a = vp.convertToViewportPoint(g.x, g.y);
+            ctx.drawImage(g._img, a[0], a[1] - g.h * scale, g.w * scale, g.h * scale);
+        });
+
         editorShapes.forEach(function (sh) {
             if (sh.page !== n) return;
             ctx.beginPath();
@@ -266,6 +274,17 @@
             ctx.lineJoin = 'round';
             drawSingleShape(ctx, sh);
         });
+    }
+
+    function loadSigImgs(n) {
+        return Promise.all(editorSigs.filter(function (g) { return g.page === n && !g._img; }).map(function (g) {
+            return new Promise(function (res) {
+                var im = new Image();
+                im.onload = function () { g._img = im; res(); };
+                im.onerror = res;
+                im.src = g.url;
+            });
+        }));
     }
 
     function drawText(ctx, vp, text, px, py, fontPt, scale, o, k) {

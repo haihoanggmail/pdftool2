@@ -139,6 +139,7 @@
                     delete c.vp;
                     return c;
                 }),
+                sigs: editorSigs,
                 seq: editorSeq,
                 addedSeq: addedIdSeq
             },
@@ -289,6 +290,7 @@
         modifiedImages = e.images || [];
         addedTexts = e.added || [];
         editorShapes = e.shapes || [];
+        editorSigs = e.sigs || [];
         editorScale = e.scale || 1.5;
 
         // Giữ bộ đếm id không bị trùng với dữ liệu đã có

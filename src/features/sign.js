@@ -153,6 +153,52 @@ async function openPdf(file) {
   finally { window.Progress?.hide(); }
 }
 
+async function renderPage() {
+  if (!st.pdf) return; const tk = ++st.token;
+  const page = await st.pdf.getPage(st.cur), stage = $('#sg-stage');
+  const base = page.getViewport({ scale: 1 }), scale = Math.min(1.6, Math.max(0.4, (stage.clientWidth - 32) / base.width)) * st.zoom, vp = page.getViewport({ scale });
+  const dpr = window.devicePixelRatio || 1, holder = document.createElement('div'); holder.className = 'sg-page';
+  holder.style.width = vp.width + 'px'; holder.style.height = vp.height + 'px';
+  const cv = document.createElement('canvas'); cv.width = Math.round(vp.width * dpr); cv.height = Math.round(vp.height * dpr); cv.style.width = vp.width + 'px'; cv.style.height = vp.height + 'px'; cv.style.display = 'block';
+  holder.appendChild(cv);
+  await page.render({ canvasContext: cv.getContext('2d'), viewport: vp, transform: dpr !== 1 ? [dpr, 0, 0, dpr, 0, 0] : null }).promise;
+  if (tk !== st.token) return;
+  stage.innerHTML = ''; stage.appendChild(holder); st.holder = holder;
+  holder.addEventListener('pointerdown', (e) => { if (e.target === holder || e.target === cv) { st.sel = null; drawItems(holder); } });
+  drawItems(holder);
+  $('#sg-pageinfo').textContent = `${st.cur} / ${st.pages}`; $('#sg-zinfo').textContent = Math.round(st.zoom * 100) + '%';
+}
+
+// Vẽ các chữ ký của trang hiện tại: mỗi chữ ký là một đối tượng độc lập (kéo, đổi cỡ, xoá)
+function drawItems(h) {
+  h = h || st.holder; if (!h) return;
+  h.querySelectorAll('.sg-item').forEach((n) => n.remove());
+  const W = h.clientWidth, H = h.clientHeight;
+  st.ph.filter((p) => p.page === st.cur).forEach((p) => {
+    const sig = p.snap || st.sigs.find((s) => s.id === p.sigId); if (!sig) return;
+    const el = document.createElement('div'); el.className = 'sg-item' + (st.sel === p.id ? ' sel' : ''); el.dataset.id = p.id;
+    const place = () => { const w = p.fw * W; el.style.cssText = `left:${p.fx * W}px;top:${p.fy * H}px;width:${w}px;height:${w / sig.ar}px`; };
+    place();
+    el.innerHTML = `<img src="${sig.url}" alt="chữ ký" draggable="false"><span class="sg-del" title="Xoá">✕</span><span class="sg-rs" title="Đổi kích thước"></span>`;
+    el.addEventListener('pointerdown', (e) => {
+      e.stopPropagation(); e.preventDefault();
+      if (e.target.classList.contains('sg-del')) { st.ph = st.ph.filter((x) => x.id !== p.id); if (st.sel === p.id) st.sel = null; drawItems(h); return; }
+      h.querySelectorAll('.sg-item').forEach((n) => n.classList.toggle('sel', n === el)); st.sel = p.id;
+      const resize = e.target.classList.contains('sg-rs'), sx = e.clientX, sy = e.clientY, ox = p.fx, oy = p.fy, ow = p.fw;
+      el.setPointerCapture(e.pointerId);
+      const move = (ev) => {
+        const dx = (ev.clientX - sx) / W, dy = (ev.clientY - sy) / H;
+        if (resize) p.fw = Math.min(1 - p.fx, Math.max(0.04, ow + dx));
+        else { const hh = p.fw * W / sig.ar / H; p.fx = Math.min(1 - p.fw, Math.max(0, ox + dx)); p.fy = Math.min(1 - hh, Math.max(0, oy + dy)); }
+        place();
+      };
+      const up = () => { el.removeEventListener('pointermove', move); el.removeEventListener('pointerup', up); el.removeEventListener('pointercancel', up); };
+      el.addEventListener('pointermove', move); el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up);
+    });
+    h.appendChild(el);
+  });
+}
+
 function addToPage() {
   if (!st.pdf) return window.toast?.('Hãy mở file PDF trước', 'error');
   const sig = st.sigs.find(s => s.id === st.active); if (!sig) return window.toast?.('Hãy tạo hoặc chọn một chữ ký', 'error');
