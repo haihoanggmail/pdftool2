@@ -733,7 +733,7 @@ self.onmessage = async (ev) => {
         balanced: { dpi: 150, q: 0.66 },
         strong: { dpi: 110, q: 0.50 },
         extreme: { dpi: 72, q: 0.38 },
-        raster: { dpi: 100, q: 0.55 }
+        raster: { dpi: 120, q: 0.55 }
     };
 
     window.onCompressLevelChange = function (val) {
@@ -774,6 +774,8 @@ self.onmessage = async (ev) => {
                     rec = `Phát hiện <b>${imgCount} ảnh nhúng</b> (~${imgMb} MB) trong <b>${pageCount} trang</b>. Chế độ A sẽ bảo toàn trọn vẹn 100% chữ & vector và tối ưu cấu trúc luồng.`;
                 } else if (lvl === 'strong' || lvl === 'extreme') {
                     rec = `Phát hiện <b>${imgCount} ảnh nhúng</b> (~${imgMb} MB). Chế độ nén mạnh dự kiến giảm <b>60% - 90%</b> dung lượng.`;
+                } else if (lvl === 'auto') {
+                    rec = `Phát hiện <b>${imgCount} ảnh nhúng</b> (~${imgMb} MB) trong <b>${pageCount} trang</b>. Chế độ Tự động sẽ thử nhiều mức nén và giữ file nhỏ nhất, vẫn giữ chữ gốc nếu có thể.`;
                 } else if (lvl === 'raster') {
                     rec = `Tài liệu có <b>${pageCount} trang</b>. Chế độ Rasterize sẽ chuyển toàn bộ thành ảnh JPEG tối ưu (giảm dung lượng tối đa).`;
                 } else {
@@ -782,6 +784,11 @@ self.onmessage = async (ev) => {
             } else {
                 rec = `Tài liệu gồm <b>${pageCount} trang</b>, chủ yếu là <b>văn bản & vector</b> (không có ảnh nặng). Khuyên dùng <b>Chế độ A (Bảo toàn nội dung)</b> để nén luồng dữ liệu an toàn.`;
             }
+            try {
+                const bd = breakdown(doc), tot = bd.img + bd.font + bd.icc + bd.other || 1;
+                rec += '<br><span style="color:#475569">Phân bổ dung lượng: ' + fmtBreakdown(bd) + '.</span>';
+                if (bd.font / tot > 0.35) rec += '<br><span style="color:#b45309">⚠ Font nhúng chiếm phần lớn dung lượng, nén ảnh sẽ ít hiệu quả (chưa hỗ trợ cắt bớt font).</span>';
+            } catch (e) {}
             txt.innerHTML = rec;
         } catch (e) {
             txt.innerHTML = `File: <b>${esc(it.name)}</b> (${fmtBytes(it.size || it.bytes.byteLength)}). Sẵn sàng nén theo cấu hình đã chọn.`;
@@ -812,6 +819,7 @@ self.onmessage = async (ev) => {
         return out;
     }
     async function inflate(u8) {
+        if (window.fflate) { try { return fflate.unzlibSync(u8); } catch (e) { /* thử bộ giải nén của trình duyệt */ } }
         const ds = new DecompressionStream('deflate');
         const w = ds.writable.getWriter();
         w.write(u8); w.close();
@@ -904,10 +912,174 @@ self.onmessage = async (ev) => {
         return sizes;
     }
     async function deflateBytes(u8) {
+        if (window.fflate) return fflate.zlibSync(u8, { level: u8.length > 12e6 ? 6 : 9 });   // zlib mức cao nhất
         const cs = new CompressionStream('deflate');
         const w = cs.writable.getWriter();
         w.write(u8); w.close();
         return new Uint8Array(await new Response(cs.readable).arrayBuffer());
+    }
+    // ===== Bộ nén v2: mozjpeg (WASM) + fflate + gộp trùng + báo cáo dung lượng =====
+    const tick = () => new Promise(r => setTimeout(r, 0));
+    let libsP = null, MOZ = null;
+    function ensureCompressLibs() {
+        if (libsP) return libsP;
+        libsP = (async () => {
+            try { if (!window.fflate) await loadScript(['vendor/fflate.min.js']); } catch (e) { console.warn('fflate', e); }
+            try {
+                const mod = await import(new URL('vendor/jsq-jpeg.mjs', document.baseURI).href);
+                const wasm = await WebAssembly.compile(await (await fetch('vendor/mozjpeg_enc.wasm')).arrayBuffer());
+                await mod.init(wasm);
+                MOZ = mod;
+            } catch (e) { console.warn('mozjpeg không khả dụng, dùng bộ mã hóa JPEG của trình duyệt', e); MOZ = null; }
+        })();
+        return libsP;
+    }
+    async function sha1hex(u8) {
+        const h = await crypto.subtle.digest('SHA-1', u8);
+        return Array.from(new Uint8Array(h), b => b.toString(16).padStart(2, '0')).join('');
+    }
+    // số thành phần màu của file JPEG (1 = xám, 3 = RGB, 4 = CMYK)
+    function jpegComps(u) {
+        for (let i = 2; i < u.length - 9;) {
+            if (u[i] !== 0xFF) { i++; continue; }
+            const m = u[i + 1];
+            if (m >= 0xC0 && m <= 0xC2) return u[i + 9];
+            if (m === 0xFF) { i++; continue; }
+            if (m === 0xD8 || m === 0x01 || (m >= 0xD0 && m <= 0xD7)) { i += 2; continue; }
+            i += 2 + ((u[i + 2] << 8) | u[i + 3]);
+        }
+        return 0;
+    }
+    // Mã hóa JPEG: mozjpeg (progressive + tối ưu Huffman, nhỏ hơn ~15-30%) ; tự nhận diện ảnh xám để lưu 1 kênh
+    async function encodeJpeg(cv, q, grayHint) {
+        const w = cv.width, h = cv.height;
+        const id = cv.getContext('2d').getImageData(0, 0, w, h), px = id.data;
+        let gray = grayHint === true;
+        if (!gray && grayHint !== false) {
+            gray = true;
+            for (let i = 0; i < px.length; i += 4) {
+                const r = px[i], g = px[i + 1], b = px[i + 2];
+                if (Math.abs(r - g) > 5 || Math.abs(g - b) > 5) { gray = false; break; }
+            }
+        }
+        if (MOZ) {
+            try {
+                const buf = await MOZ.encode(id, { quality: Math.round(q * 100), progressive: true, optimize_coding: true, color_space: gray ? 1 : 3, chroma_subsample: 2 });
+                const u = new Uint8Array(buf);
+                return { bytes: u, comps: jpegComps(u) || (gray ? 1 : 3) };
+            } catch (e) { console.warn('mozjpeg lỗi, dùng bộ mã hóa trình duyệt', e); }
+        }
+        const blob = await canvasBlob(cv, 'image/jpeg', q);
+        if (!blob) return null;
+        const u = new Uint8Array(await blob.arrayBuffer());
+        return { bytes: u, comps: jpegComps(u) || 3 };
+    }
+    // Phân loại dung lượng: ảnh / font / ICC / nội dung & khác
+    function breakdown(pdf) {
+        const { PDFRawStream, PDFName } = P();
+        const N = n => PDFName.of(n);
+        const b = { img: 0, font: 0, icc: 0, other: 0 };
+        for (const [, o] of pdf.context.enumerateIndirectObjects()) {
+            if (!(o instanceof PDFRawStream)) continue;
+            const n = o.getContentsSize(), d = o.dict, sub = d.get(N('Subtype'));
+            if (sub === N('Image')) b.img += n;
+            else if (d.has(N('Length1')) || sub === N('Type1C') || sub === N('CIDFontType0C') || sub === N('OpenType')) b.font += n;
+            else if (d.has(N('N')) && !sub && n < 1.5e6 && !d.has(N('Type'))) b.icc += n;
+            else b.other += n;
+        }
+        return b;
+    }
+    const fmtBreakdown = b => 'ảnh ' + fmtBytes(b.img) + ' • font ' + fmtBytes(b.font) + (b.icc > 20000 ? ' • ICC ' + fmtBytes(b.icc) : '') + ' • nội dung & khác ' + fmtBytes(b.other);
+    // Gộp các luồng dữ liệu giống hệt nhau (logo / ảnh / font lặp lại ở nhiều trang)
+    async function dedupeStreams(pdf, onProg) {
+        const { PDFRef, PDFDict, PDFArray, PDFRawStream } = P();
+        const ctx = pdf.context;
+        let total = 0;
+        for (let pass = 0; pass < 2; pass++) {
+            const seen = new Map(), remap = new Map();
+            const objs = Array.from(ctx.enumerateIndirectObjects());
+            for (let k = 0; k < objs.length; k++) {
+                const [ref, obj] = objs[k];
+                if (!(obj instanceof PDFRawStream)) continue;
+                const c = obj.getContents();
+                if (c.length < 512) continue;
+                if (k % 40 === 0) { if (onProg) onProg(k / objs.length); await tick(); }
+                const parts = [];
+                obj.dict.entries().forEach(([key, v]) => { const nm = key.decodeText(); if (nm !== 'Length') parts.push(nm + '=' + v.toString()); });
+                parts.sort();
+                const sig = parts.join('|') + '#' + c.length + '#' + await sha1hex(c);
+                const prev = seen.get(sig);
+                if (prev) remap.set(ref.tag, prev); else seen.set(sig, ref);
+            }
+            if (!remap.size) break;
+            const visit = v => {
+                if (v instanceof PDFRawStream) v = v.dict;
+                if (v instanceof PDFDict) {
+                    v.entries().forEach(([key, x]) => {
+                        if (x instanceof PDFRef) { const r = remap.get(x.tag); if (r) v.set(key, r); } else visit(x);
+                    });
+                } else if (v instanceof PDFArray) {
+                    for (let i = 0; i < v.size(); i++) {
+                        const x = v.get(i);
+                        if (x instanceof PDFRef) { const r = remap.get(x.tag); if (r) v.set(i, r); } else visit(x);
+                    }
+                }
+            };
+            for (const [, obj] of ctx.enumerateIndirectObjects()) visit(obj);
+            total += remap.size;
+        }
+        return total;
+    }
+    // Decode [0 1 ...] là bảng đồng nhất, không ảnh hưởng nên vẫn xử lý được
+    function decodeIsIdentity(d) {
+        const { PDFName, PDFArray } = P();
+        const dv = d.lookup(PDFName.of('Decode'));
+        if (!dv) return true;
+        if (!(dv instanceof PDFArray)) return false;
+        for (let i = 0; i + 1 < dv.size(); i += 2) {
+            const a = dv.lookup(i), b = dv.lookup(i + 1);
+            if (!a || !b || a.asNumber() !== 0 || b.asNumber() !== 1) return false;
+        }
+        return true;
+    }
+    // Thu nhỏ mặt nạ trong suốt (SMask) cùng tỉ lệ với ảnh; mặt nạ đặc 100% thì bỏ hẳn
+    async function shrinkSMask(ctx, ref, sc) {
+        const { PDFName, PDFRawStream, PDFArray, PDFDict } = P();
+        const N = n => PDFName.of(n);
+        const sm = ctx.lookup(ref);
+        if (!(sm instanceof PDFRawStream)) return 'skip';
+        const d = sm.dict, lk = k => d.lookup(N(k));
+        if (d.has(N('Matte')) || !decodeIsIdentity(d)) return 'skip';
+        let sf = lk('Filter');
+        if (sf instanceof PDFArray && sf.size() === 1) sf = sf.lookup(0);
+        if (sf !== N('FlateDecode') || lk('ColorSpace') !== N('DeviceGray')) return 'skip';
+        const w = lk('Width') && lk('Width').asNumber(), h = lk('Height') && lk('Height').asNumber(), bpc = lk('BitsPerComponent') && lk('BitsPerComponent').asNumber();
+        if (!w || !h || bpc !== 8) return 'skip';
+        let data = await inflate(sm.getContents());
+        let dp = lk('DecodeParms');
+        if (dp instanceof PDFArray) dp = dp.lookup(0);
+        let pred = 1;
+        if (dp instanceof PDFDict) { const pv = dp.lookup(N('Predictor')); pred = pv ? pv.asNumber() : 1; }
+        if (pred >= 10) { if (data.length < (w + 1) * h) return 'skip'; data = unpng(data, w, 1, h); }
+        else if (pred > 1) return 'skip';
+        if (data.length < w * h) return 'skip';
+        let opaque = true;
+        for (let i = 0, e = w * h; i < e; i++) if (data[i] !== 255) { opaque = false; break; }
+        if (opaque) return 'opaque';
+        if (sc > 0.98) return 'skip';
+        const tw = Math.max(1, Math.round(w * sc)), th = Math.max(1, Math.round(h * sc));
+        const cv0 = document.createElement('canvas'); cv0.width = w; cv0.height = h;
+        const c0 = cv0.getContext('2d'), im = c0.createImageData(w, h), px = im.data;
+        for (let i = 0, j = 0, e = w * h; i < e; i++, j += 4) { px[j] = px[j + 1] = px[j + 2] = data[i]; px[j + 3] = 255; }
+        c0.putImageData(im, 0, 0);
+        const cv = document.createElement('canvas'); cv.width = tw; cv.height = th;
+        const c = cv.getContext('2d'); c.imageSmoothingQuality = 'high'; c.drawImage(cv0, 0, 0, tw, th);
+        const od = c.getImageData(0, 0, tw, th).data, g = new Uint8Array(tw * th);
+        for (let i = 0; i < g.length; i++) g[i] = od[i * 4];
+        cv0.width = cv0.height = cv.width = cv.height = 1;
+        const z = await deflateBytes(g);
+        ctx.assign(ref, ctx.stream(z, { Type: 'XObject', Subtype: 'Image', Width: tw, Height: th, ColorSpace: 'DeviceGray', BitsPerComponent: 8, Filter: 'FlateDecode' }));
+        return 'shrunk';
     }
     // Xóa các object không còn được tham chiếu (rác từ lần lưu tăng dần, trang đã xóa...)
     function pruneUnreferenced(pdf) {
@@ -944,23 +1116,33 @@ self.onmessage = async (ev) => {
         n += pruneUnreferenced(pdf);
         return n;
     }
-    // Nén lại các luồng dữ liệu chưa được nén (nội dung trang, font không nén...)
+    // Nén lại luồng dữ liệu: (1) luồng chưa nén -> Flate ; (2) luồng Flate sẵn có -> nén lại bằng zlib mức 9 (không mất dữ liệu)
     async function deflateRawStreams(pdf, onProg) {
-        if (typeof CompressionStream === 'undefined') return 0;
-        const { PDFName, PDFRawStream } = P();
-        const ctx = pdf.context, F = PDFName.of('Filter');
+        const { PDFName, PDFRawStream, PDFArray } = P();
+        const ctx = pdf.context, F = PDFName.of('Filter'), FL = PDFName.of('FlateDecode');
         const list = [];
         for (const [ref, obj] of ctx.enumerateIndirectObjects()) {
-            if (obj instanceof PDFRawStream && !obj.dict.has(F) && !obj.dict.has(PDFName.of('DecodeParms')) && obj.getContentsSize() > 300) list.push([ref, obj]);
+            if (!(obj instanceof PDFRawStream) || obj.getContentsSize() <= 300) continue;
+            const f = obj.dict.lookup(F);
+            if (!f && !obj.dict.has(PDFName.of('DecodeParms'))) list.push([ref, obj, false]);
+            else if (window.fflate && obj.getContentsSize() < 4e6 && (f === FL || (f instanceof PDFArray && f.size() === 1 && f.lookup(0) === FL))) list.push([ref, obj, true]);
         }
         let saved = 0;
         for (let k = 0; k < list.length; k++) {
-            const [ref, st] = list[k];
+            const [ref, st, isFlate] = list[k];
             if (onProg) onProg(k / list.length);
+            if (k % 6 === 0) await tick();
             try {
                 const raw = st.getContents();
-                const z = await deflateBytes(raw);
-                if (z.length >= raw.length * 0.95) continue;
+                let z;
+                if (isFlate) {
+                    const plain = await inflate(raw);
+                    z = await deflateBytes(plain);
+                    if (z.length >= raw.length * 0.98) continue;
+                } else {
+                    z = await deflateBytes(raw);
+                    if (z.length >= raw.length * 0.95) continue;
+                }
                 const nd = {};
                 st.dict.entries().forEach(([key, val]) => { const nm = key.decodeText(); if (nm !== 'Length') nd[nm] = val; });
                 nd.Filter = 'FlateDecode';
@@ -1006,6 +1188,7 @@ self.onmessage = async (ev) => {
                 if (sm instanceof PDFRef) smaskTags.add(sm.tag);
             }
         }
+        const reasons = {}, smDone = new Set(), opaqueSm = new Set();
         let disp = new Map();
         try { disp = await imageDisplaySizes(pdf); } catch (e) { console.warn('imageDisplaySizes', e); }
         const done = new Map();                                   // ảnh trùng nội dung -> dùng chung kết quả
@@ -1013,11 +1196,13 @@ self.onmessage = async (ev) => {
         for (let k = 0; k < entries.length; k++) {
             const [ref, st] = entries[k];
             onProg(k / Math.max(1, entries.length));
+            if (k % 3 === 0) await tick();
+            const bump = r => { const e = reasons[r] || (reasons[r] = { n: 0, b: 0 }); e.n++; e.b += st.getContentsSize(); };
             try {
                 if (smaskTags.has(ref.tag)) continue;                 // mặt nạ trong suốt phải giữ dạng xám
                 const d = st.dict;
                 const lk = key => d.lookup(N(key));
-                if (lk('ImageMask') === P().PDFBool.True || d.has(N('Mask'))) continue;
+                if (lk('ImageMask') === P().PDFBool.True || d.has(N('Mask'))) { bump('ảnh mặt nạ / ảnh 1-bit'); continue; }
                 const w = lk('Width') && lk('Width').asNumber(), h = lk('Height') && lk('Height').asNumber();
                 const bpc = lk('BitsPerComponent') && lk('BitsPerComponent').asNumber();
                 if (!w || !h) continue;
@@ -1029,16 +1214,17 @@ self.onmessage = async (ev) => {
                 let f = lk('Filter'), filters = [];
                 if (f instanceof PDFName) filters = [f];
                 else if (f instanceof PDFArray) for (let i = 0; i < f.size(); i++) filters.push(f.lookup(i));
-                if (filters.length !== 1) continue;
+                if (filters.length !== 1) { bump('nhiều lớp mã hóa'); continue; }
                 const raw = st.getContents();
                 if (raw.length < 4000 || w * h < 12000) continue;
-                let source; // ImageBitmap hoặc canvas
+                let source, grayHint; // ImageBitmap hoặc canvas
                 if (filters[0] === N('DCTDecode')) {
-                    if (d.has(N('Decode'))) continue;
+                    if (!decodeIsIdentity(d)) { bump('ảnh có bảng Decode'); continue; }
+                    grayHint = jpegComps(raw) === 1 ? true : undefined;
                     source = await createImageBitmap(new Blob([raw], { type: 'image/jpeg' }));
                 } else if (filters[0] === N('FlateDecode')) {
-                    if (d.has(N('Decode'))) continue;
-                    if (bpc !== 8) continue;
+                    if (!decodeIsIdentity(d)) { bump('ảnh có bảng Decode'); continue; }
+                    if (bpc !== 8) { bump('ảnh ' + bpc + '-bit'); continue; }
                     let cs = lk('ColorSpace'), ncomp = 0, pal = null;
                     if (cs instanceof PDFName) {
                         ncomp = cs === N('DeviceRGB') ? 3 : cs === N('DeviceGray') ? 1 : 0;
@@ -1052,7 +1238,8 @@ self.onmessage = async (ev) => {
                         else if (nm === N('CalGray')) ncomp = 1;
                         else if (nm === N('Indexed')) { pal = readPalette(cs); ncomp = pal ? 1 : 0; }
                     }
-                    if (ncomp !== 1 && ncomp !== 3) continue;
+                    if (ncomp !== 1 && ncomp !== 3) { bump('hệ màu đặc biệt'); continue; }
+                    grayHint = (ncomp === 1 && !(pal && pal.bn === 3)) ? true : undefined;
                     let data = await inflate(raw);
                     let dp = lk('DecodeParms');
                     if (dp instanceof PDFArray) dp = dp.lookup(0);
@@ -1081,7 +1268,7 @@ self.onmessage = async (ev) => {
                     else { for (let i = 0, j = 0, e = w * h; i < e; i++, j += 4) { px[j] = px[j + 1] = px[j + 2] = data[i]; px[j + 3] = 255; } }
                     c0.putImageData(im, 0, 0);
                     source = cv0;
-                } else continue;
+                } else { bump('định dạng ' + String(filters[0]).replace('/', '')); continue; }
                 const sw = source.width, sh = source.height;
                 // cạnh tối đa cần giữ = dpi mục tiêu x kích thước hiển thị (inch). Không biết vị trí -> coi như phủ trang A4.
                 const ds = disp.get(ref.tag);
@@ -1098,70 +1285,133 @@ self.onmessage = async (ev) => {
                 c.imageSmoothingQuality = 'high';
                 c.drawImage(source, 0, 0, tw, th);
                 if (source.close) source.close();
-                const blob = await canvasBlob(cv, 'image/jpeg', cfg.q);
+                const enc = await encodeJpeg(cv, cfg.q, grayHint);
                 cv.width = cv.height = 1;
-                if (!blob) continue;
-                const nb = new Uint8Array(await blob.arrayBuffer());
-                if (nb.length > raw.length * 0.97) continue;          // không nhỏ hơn thì giữ nguyên ảnh gốc
-                const nd = { Type: 'XObject', Subtype: 'Image', Width: tw, Height: th, ColorSpace: 'DeviceRGB', BitsPerComponent: 8, Filter: 'DCTDecode' };
-                if (smaskRef) nd.SMask = smaskRef;
+                if (!enc) continue;
+                const nb = enc.bytes;
+                if (nb.length > raw.length * 0.97) { bump('đã gọn, không nhỏ hơn'); continue; }   // không nhỏ hơn thì giữ nguyên ảnh gốc
+                let smOut = smaskRef;
+                if (smaskRef instanceof PDFRef) {
+                    if (!smDone.has(smaskRef.tag)) {
+                        smDone.add(smaskRef.tag);
+                        const r = await shrinkSMask(ctx, smaskRef, sc);
+                        if (r === 'opaque') opaqueSm.add(smaskRef.tag);
+                    }
+                    if (opaqueSm.has(smaskRef.tag)) smOut = null;
+                }
+                const nd = { Type: 'XObject', Subtype: 'Image', Width: tw, Height: th, ColorSpace: enc.comps === 1 ? 'DeviceGray' : 'DeviceRGB', BitsPerComponent: 8, Filter: 'DCTDecode' };
+                if (smOut) nd.SMask = smOut;
                 ctx.assign(ref, ctx.stream(nb, nd));
                 replaced++; saved += raw.length - nb.length;
             } catch (e) { /* bỏ qua ảnh không xử lý được */ }
         }
-        return { replaced, saved, total: entries.length };
+        return { replaced, saved, total: entries.filter(e => !smaskTags.has(e[0].tag)).length, reasons };
     }
+    // Siêu nén: chuyển trang thành ảnh JPEG (mozjpeg) + gắn lớp chữ ẩn để vẫn tìm kiếm / copy được
+    async function buildRaster(it, cfg, prog) {
+        const doc = await openPdfJs(it);
+        const out = await P().PDFDocument.create();
+        let font = null, textOk = true;
+        try { font = await getFontLib(out, false); } catch (e) { textOk = false; }
+        const { degrees } = P();
+        let words = 0;
+        for (let i = 1; i <= doc.numPages; i++) {
+            prog(((i - 1) / doc.numPages) * 100, 'Đang nén trang ' + i + '/' + doc.numPages + '...');
+            await tick();
+            const page = await doc.getPage(i);
+            const v1 = page.getViewport({ scale: 1 });
+            const vp = page.getViewport({ scale: cfg.dpi / 72 });
+            const cv = document.createElement('canvas');
+            cv.width = Math.ceil(vp.width); cv.height = Math.ceil(vp.height);
+            const c = cv.getContext('2d');
+            c.fillStyle = '#fff'; c.fillRect(0, 0, cv.width, cv.height);
+            await page.render({ canvasContext: c, viewport: vp }).promise;
+            const enc = await encodeJpeg(cv, cfg.q);
+            const img = await out.embedJpg(enc.bytes);
+            const pg = out.addPage([v1.width, v1.height]);
+            pg.drawImage(img, { x: 0, y: 0, width: v1.width, height: v1.height });
+            if (font) {
+                try {
+                    const tc = await page.getTextContent();
+                    for (const t of tc.items) {
+                        if (!t.str || !t.str.trim()) continue;
+                        const txt = safeText(font, t.str);
+                        if (!txt) continue;
+                        const m = pdfjsLib.Util.transform(v1.transform, t.transform);
+                        const size = Math.hypot(m[2], m[3]);
+                        if (!(size > 0.5)) continue;
+                        pg.drawText(txt, { x: m[4], y: v1.height - m[5], size, font, rotate: degrees(-Math.atan2(m[1], m[0]) * 180 / Math.PI), opacity: 0 });
+                        words++;
+                    }
+                } catch (e) { /* trang không có lớp chữ */ }
+            }
+            cv.width = cv.height = 1;
+            page.cleanup();
+        }
+        doc.destroy();
+        const bytes = await out.save({ useObjectStreams: true });
+        return { bytes, note: 'Chuyển trang thành ảnh JPEG ' + cfg.dpi + ' dpi' + (words ? ', giữ lớp chữ ẩn (tìm kiếm/copy được)' : (textOk ? ' (không có chữ để giữ)' : ', không gắn được lớp chữ')) };
+    }
+
+    // Chạy 1 chế độ nén, trả về {bytes, note}
+    async function buildCompressed(it, level, prog) {
+        await ensureCompressLibs();
+        if (level === 'raster') return buildRaster(it, COMP.raster, prog);
+        const pdf = await loadLib(it);
+        let note;
+        if (level === 'preserve') {
+            prog(5, 'Đang gộp đối tượng trùng lặp...');
+            const dd = await dedupeStreams(pdf, f => prog(5 + f * 20));
+            prog(30, 'Đang dọn dữ liệu thừa...');
+            const stripped = stripExtras(pdf);
+            await deflateRawStreams(pdf, f => prog(35 + f * 55, 'Đang nén lại luồng dữ liệu (zlib mức 9)...'));
+            note = 'Tối ưu luồng dữ liệu (bảo toàn 100% chữ, font & vector)' + (dd ? ', gộp ' + dd + ' đối tượng trùng' : '') + (stripped ? ', dọn ' + stripped + ' mục thừa' : '');
+        } else {
+            const cfg = COMP[level] || COMP.balanced;
+            prog(3, 'Đang gộp đối tượng trùng lặp...');
+            let dd = await dedupeStreams(pdf);
+            const r = await recompressImages(pdf, cfg, f => prog(5 + f * 55, 'Đang giảm độ phân giải & nén lại ảnh (mozjpeg)...'));
+            prog(62, 'Đang gộp đối tượng sau nén...');
+            dd += await dedupeStreams(pdf);
+            prog(70, 'Đang dọn dữ liệu thừa...');
+            const stripped = stripExtras(pdf);
+            await deflateRawStreams(pdf, f => prog(72 + f * 24, 'Đang nén lại luồng dữ liệu (zlib mức 9)...'));
+            note = r.replaced + '/' + r.total + ' ảnh được nén lại (' + cfg.dpi + ' dpi, giữ 100% văn bản)' + (dd ? ', gộp ' + dd + ' đối tượng trùng' : '') + (stripped ? ', dọn ' + stripped + ' mục thừa' : '');
+            const left = Object.keys(r.reasons || {}).map(k => [k, r.reasons[k]]).filter(x => x[1].b > 100000).sort((a, b) => b[1].b - a[1].b).slice(0, 2);
+            if (left.length) note += ' • Chưa xử lý được: ' + left.map(x => x[1].n + ' ảnh ' + x[0] + ' (' + fmtBytes(x[1].b) + ')').join('; ');
+        }
+        const after = breakdown(pdf);
+        const bytes = await pdf.save({ useObjectStreams: true, addDefaultPage: false });
+        return { bytes, note: note + ' • Còn lại: ' + fmtBreakdown(after) };
+    }
+
     TOOLS.compress = {
         read() { return { level: $('tl-comp-level').value }; },
         async run(it, o) {
             const orig = it.bytes.byteLength;
             const base = baseName(it.name);
             const t0 = performance.now();
-            let outBytes, note;
+            const scaled = (a, b) => (p, m) => setProgress(a + (b - a) * p / 100, m);
+            let res;
 
-            if (o.level === 'raster') {
-                const cfg = COMP.raster;
-                const doc = await openPdfJs(it);
-                const out = await P().PDFDocument.create();
-                for (let i = 1; i <= doc.numPages; i++) {
-                    setProgress((i / doc.numPages) * 100, 'Đang nén trang ' + i + '/' + doc.numPages + '...');
-                    const page = await doc.getPage(i);
-                    const v1 = page.getViewport({ scale: 1 });
-                    const vp = page.getViewport({ scale: cfg.dpi / 72 });
-                    const cv = document.createElement('canvas');
-                    cv.width = Math.ceil(vp.width); cv.height = Math.ceil(vp.height);
-                    const c = cv.getContext('2d');
-                    c.fillStyle = '#fff'; c.fillRect(0, 0, cv.width, cv.height);
-                    await page.render({ canvasContext: c, viewport: vp }).promise;
-                    const blob = await canvasBlob(cv, 'image/jpeg', cfg.q);
-                    const img = await out.embedJpg(new Uint8Array(await blob.arrayBuffer()));
-                    const pg = out.addPage([v1.width, v1.height]);
-                    pg.drawImage(img, { x: 0, y: 0, width: v1.width, height: v1.height });
-                    cv.width = cv.height = 1;
-                    page.cleanup();
+            if (o.level === 'auto') {
+                const red = r => 1 - r.bytes.length / orig;
+                res = await buildCompressed(it, 'balanced', scaled(0, 40));
+                res.tag = 'Cân bằng';
+                if (red(res) < 0.5) {
+                    const s2 = await buildCompressed(it, 'strong', scaled(40, 70));
+                    if (s2.bytes.length < res.bytes.length) { res = s2; res.tag = 'Nén mạnh'; }
                 }
-                doc.destroy();
-                outBytes = await out.save({ useObjectStreams: true });
-                note = 'Chuyển toàn bộ trang thành ảnh JPEG tối ưu';
-            } else if (o.level === 'preserve') {
-                // Chế độ A: Nén bảo toàn cấu trúc & nội dung (100% Vector, Chữ, Bookmark, Links)
-                setProgress(20, 'Đang tối ưu luồng dữ liệu & cấu trúc PDF...');
-                const pdf = await loadLib(it);
-                stripExtras(pdf);
-                await deflateRawStreams(pdf, f => setProgress(30 + f * 60));
-                outBytes = await pdf.save({ useObjectStreams: true, addDefaultPage: false });
-                note = 'Tối ưu luồng dữ liệu (bảo toàn 100% chữ, font & vector)';
+                if (red(res) < 0.5 && (it.pages || 0) <= 80) {
+                    setProgress(70, 'Đang thử Siêu nén (chuyển trang thành ảnh)...');
+                    const r3 = await buildCompressed(it, 'raster', scaled(70, 98));
+                    if (r3.bytes.length < res.bytes.length * 0.6) { res = r3; res.tag = 'Siêu nén'; }
+                }
+                res.note = 'Tự động chọn «' + res.tag + '» • ' + res.note;
             } else {
-                // Chế độ B (Cân bằng) hoặc Chế độ C (Nén mạnh)
-                const pdf = await loadLib(it);
-                const cfg = COMP[o.level] || COMP.balanced;
-                const r = await recompressImages(pdf, cfg, f => setProgress(f * 80, 'Đang giảm độ phân giải & nén lại ảnh nhúng...'));
-                setProgress(82, 'Đang dọn dữ liệu thừa & nén luồng nội dung...');
-                const stripped = stripExtras(pdf);
-                await deflateRawStreams(pdf, f => setProgress(82 + f * 12));
-                outBytes = await pdf.save({ useObjectStreams: true });
-                note = r.replaced + '/' + r.total + ' ảnh được nén lại (' + cfg.dpi + ' dpi, giữ 100% văn bản)' + (stripped ? ', dọn ' + stripped + ' mục thừa' : '');
+                res = await buildCompressed(it, o.level, scaled(0, 98));
             }
+            const outBytes = res.bytes, note = res.note;
 
             // Nghiệm thu & kiểm tra tính toàn vẹn (Verification)
             try {
@@ -1176,7 +1426,7 @@ self.onmessage = async (ev) => {
 
             // Đo dung lượng thực tế
             if (outBytes.length >= orig) {
-                it.note = 'File gốc đã được tối ưu tối đa (' + fmtBytes(orig) + '), giữ nguyên file gốc để tránh phình to.';
+                it.note = 'File gốc đã được tối ưu tối đa (' + fmtBytes(orig) + '), giữ nguyên file gốc để tránh phình to. ' + note;
                 return [{ name: base + '_goc.pdf', data: new Uint8Array(it.bytes.slice(0)), skipDownload: true }];
             }
 
@@ -1192,7 +1442,7 @@ self.onmessage = async (ev) => {
     window.compressPdfBytes = async function (bytes, level, name) {
         const u8 = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
         const it = { name: name || 'tailieu.pdf', bytes: u8, size: u8.byteLength };
-        const res = await TOOLS.compress.run(it, { level: level || 'balanced' });
+        const res = await TOOLS.compress.run(it, { level: level || 'auto' });
         const wrap = document.getElementById('tl-progress-wrap');
         if (wrap) wrap.style.display = 'none';
         const out = res && res[0] && !res[0].skipDownload ? res[0].data : null;

@@ -636,6 +636,7 @@ function buildRibbonHTML() {
           <div class="ribbon-group-body">
             <div class="rb-column">
               <select id="rb-comp-level" class="rb-select" style="width:110px;">
+                <option value="auto" selected>Tự động</option>
                 <option value="balanced">Cân bằng</option>
                 <option value="strong">Nén mạnh</option>
                 <option value="extreme">Cực mạnh</option>
@@ -2456,7 +2457,7 @@ export async function applyCompressToEditor() {
   if (window.Progress) window.Progress.show('Đang tối ưu hóa dung lượng PDF...', null);
 
   try {
-    const level = document.getElementById('rb-comp-level')?.value || 'balanced';
+    const level = document.getElementById('rb-comp-level')?.value || 'auto';
     const oldKb = Math.round(currentBytes.byteLength / 1024);
     let outBytes = currentBytes, note = '';
     if (typeof window.compressPdfBytes === 'function') {
