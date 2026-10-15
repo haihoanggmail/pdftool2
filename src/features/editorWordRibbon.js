@@ -335,6 +335,26 @@ function buildRibbonHTML() {
           </div>
           <div class="ribbon-group-title">LỊCH SỬ &amp; XUẤT</div>
         </div>
+      <div class="ribbon-group">
+          <div class="ribbon-group-body">
+            <button class="rb-btn-large" id="rb-qk-blank" title="Quét và xóa các trang trắng (tùy chọn ở tab Bố trí & Canh lề)">
+              <span class="rb-icon">🧹</span><span class="rb-label">Xóa Trang<br>Trắng</span>
+            </button>
+            <button class="rb-btn-large" id="rb-qk-pagenum" title="Đánh số trang (tùy chọn ở tab Chèn)">
+              <span class="rb-icon">🔢</span><span class="rb-label">Đánh Số<br>Trang</span>
+            </button>
+            <button class="rb-btn-large" id="rb-qk-wm" title="Chèn watermark (chữ ở tab Chèn)">
+              <span class="rb-icon">💧</span><span class="rb-label">Watermark</span>
+            </button>
+            <button class="rb-btn-large" id="rb-qk-redact" title="Tự tìm và che email, SĐT, CCCD, MST (tùy chọn ở tab Soát lỗi & Bảo mật)">
+              <span class="rb-icon">🛡️</span><span class="rb-label">Che Thông<br>Tin</span>
+            </button>
+            <button class="rb-btn-large" id="rb-qk-comp" title="Nén PDF (mức nén ở tab Tự động hóa)">
+              <span class="rb-icon">🗜️</span><span class="rb-label">Nén<br>PDF</span>
+            </button>
+          </div>
+          <div class="ribbon-group-title">CÔNG CỤ NHANH</div>
+        </div>
       </div>
 
       <!-- 2. DRAW PANEL (VẼ & HÌNH KHỐI ĐẦY ĐỦ) -->
@@ -600,6 +620,9 @@ function buildRibbonHTML() {
                   <input type="checkbox" id="rb-pipe-comp"> 5. Nén PDF
                 </label>
               </div>
+              <label style="font-size:11px;font-weight:600;display:flex;align-items:center;gap:5px;cursor:pointer;color:#b91c1c;">
+                <input type="checkbox" id="rb-pipe-redact"> 6. Che thông tin nhạy cảm (theo ô chọn ở tab Soát lỗi &amp; Bảo mật)
+              </label>
             </div>
 
             <button class="rb-btn-large warning-action" id="rb-run-pipeline-btn" style="min-width:140px; font-weight:bold;" title="Thực thi chuỗi thao tác liên hoàn chỉ với 1 click ngay trên file đang mở">
@@ -638,6 +661,26 @@ function buildRibbonHTML() {
 
       <!-- 5. REVIEW & PROTECT PANEL -->
       <div class="ribbon-panel" id="rb-panel-review">
+        <div class="ribbon-group">
+          <div class="ribbon-group-body">
+            <div class="rb-column" style="gap:2px;">
+              <div class="rb-row" style="gap:10px;">
+                <label style="font-size:11px;display:flex;align-items:center;gap:4px;cursor:pointer;"><input type="checkbox" id="rb-rd-email" checked> Email</label>
+                <label style="font-size:11px;display:flex;align-items:center;gap:4px;cursor:pointer;"><input type="checkbox" id="rb-rd-phone" checked> SĐT</label>
+                <label style="font-size:11px;display:flex;align-items:center;gap:4px;cursor:pointer;"><input type="checkbox" id="rb-rd-cccd" checked> CCCD/CMND</label>
+                <label style="font-size:11px;display:flex;align-items:center;gap:4px;cursor:pointer;"><input type="checkbox" id="rb-rd-mst" checked> MST</label>
+              </div>
+              <input type="text" id="rb-rd-custom" class="rb-input-text" placeholder="Từ khóa khác (ngăn cách bằng ;)" style="width:235px;">
+            </div>
+            <button class="rb-btn-large warning-action" id="rb-apply-redact-btn" title="Tự tìm và che đen mọi trang của tài liệu đang sửa (trang bị che sẽ thành ảnh, dữ liệu bên dưới bị xóa thật)">
+              <span class="rb-icon">🛡️</span><span class="rb-label">Che Tự<br>Động</span>
+            </button>
+            <button class="rb-btn-large" id="rb-open-redact-btn" title="Mở khung che thủ công: kéo chuột vẽ vùng cần che trên tài liệu đang sửa">
+              <span class="rb-icon">✋</span><span class="rb-label">Che Thủ<br>Công</span>
+            </button>
+          </div>
+          <div class="ribbon-group-title">CHE THÔNG TIN NHẠY CẢM</div>
+        </div>
         <div class="ribbon-group">
           <div class="ribbon-group-body">
             <input type="password" id="rb-protect-pass-2" class="rb-input-text" placeholder="Nhập mật khẩu..." style="width:120px;">
@@ -901,6 +944,15 @@ function wireRibbonEvents() {
 
   // Compress
   document.getElementById('rb-apply-compress-btn')?.addEventListener('click', applyCompressToEditor);
+  // Che thông tin nhạy cảm
+  document.getElementById('rb-apply-redact-btn')?.addEventListener('click', applyRedactToEditor);
+  document.getElementById('rb-open-redact-btn')?.addEventListener('click', openRedactManualFromEditor);
+  // Công cụ nhanh (tab Trang chủ)
+  document.getElementById('rb-qk-blank')?.addEventListener('click', applyRemoveBlankPagesToEditor);
+  document.getElementById('rb-qk-pagenum')?.addEventListener('click', applyPageNumbersToEditor);
+  document.getElementById('rb-qk-wm')?.addEventListener('click', applyWatermarkToEditor);
+  document.getElementById('rb-qk-redact')?.addEventListener('click', applyRedactToEditor);
+  document.getElementById('rb-qk-comp')?.addEventListener('click', applyCompressToEditor);
 
   // Page Navigation & Zoom
   document.getElementById('rb-page-prev')?.addEventListener('click', () => {
@@ -2190,8 +2242,9 @@ export async function applyPipelineToEditor() {
   const doPagenum = !!document.getElementById('rb-pipe-pagenum')?.checked;
   const doWatermark = !!document.getElementById('rb-pipe-wm')?.checked;
   const doCompress = !!document.getElementById('rb-pipe-comp')?.checked;
+  const doRedact = !!document.getElementById('rb-pipe-redact')?.checked;
 
-  if (!doBlank && !doMargin && !doPagenum && !doWatermark && !doCompress) {
+  if (!doBlank && !doMargin && !doPagenum && !doWatermark && !doCompress && !doRedact) {
     if (window.toast) window.toast('Vui lòng chọn ít nhất 1 thao tác trong chuỗi liên hoàn.', 'warning');
     return;
   }
@@ -2231,6 +2284,17 @@ export async function applyPipelineToEditor() {
         appliedSteps.push(`Xóa ${blankIndices.length} trang trắng ✅`);
       } else {
         appliedSteps.push(`Kiểm tra trang trắng (không có) ✅`);
+      }
+    }
+
+    // Bước che thông tin nhạy cảm (chạy trước khi canh lề / đánh số để chữ mới thêm không bị che nhầm)
+    if (doRedact && typeof window.redactAutoBytes === 'function') {
+      if (window.Progress) window.Progress.show('Chuỗi 1-Click: Đang che thông tin nhạy cảm...', 40);
+      const { presets, custom } = readRedactOptions();
+      if (presets.length || custom) {
+        const r = await window.redactAutoBytes(bytes, { presets, custom, onProg: (m, pc) => window.Progress && window.Progress.show('Chuỗi 1-Click: ' + m, pc) });
+        if (r.count) { bytes = r.bytes; appliedSteps.push(`Che ${r.count} vùng nhạy cảm ✅`); }
+        else appliedSteps.push('Che thông tin (không tìm thấy) ✅');
       }
     }
 
@@ -2332,6 +2396,55 @@ export async function applyPipelineToEditor() {
     if (window.Progress) window.Progress.hide();
     updateRibbonDocState();
   }
+}
+
+// 8b. Che thông tin nhạy cảm
+function readRedactOptions() {
+  const presets = ['email', 'phone', 'cccd', 'mst'].filter(k => document.getElementById('rb-rd-' + k)?.checked);
+  const custom = (document.getElementById('rb-rd-custom')?.value || '').trim();
+  return { presets, custom };
+}
+
+export async function applyRedactToEditor() {
+  const currentBytes = await getEditorBytesOrAlert();
+  if (!currentBytes) return;
+  const { presets, custom } = readRedactOptions();
+  if (!presets.length && !custom) {
+    if (window.toast) window.toast('Chọn loại thông tin cần che hoặc nhập từ khóa.', 'warning');
+    return;
+  }
+  if (typeof window.redactAutoBytes !== 'function') {
+    if (window.toast) window.toast('Chức năng che thông tin chưa sẵn sàng, hãy tải lại trang.', 'error');
+    return;
+  }
+  if (window.Progress) window.Progress.show('Đang tìm thông tin nhạy cảm...', 0);
+  try {
+    const r = await window.redactAutoBytes(currentBytes, { presets, custom, onProg: (m, p) => window.Progress && window.Progress.show(m, p) });
+    if (!r.count) {
+      if (window.toast) window.toast('Không tìm thấy nội dung khớp (PDF dạng ảnh scan cần OCR trước).', 'info');
+      return;
+    }
+    pushDocUndoState('Che thông tin');
+    await window.editorLoadBytes(r.bytes, window.getEditorFileName(), true);
+    if (window.toast) window.toast(`🛡️ Đã che ${r.count} vùng trên ${r.pages} trang. Các trang này đã thành ảnh, không còn chọn được chữ.`, 'success', 5000);
+  } catch (err) {
+    if (window.toast) window.toast('Lỗi che thông tin: ' + err.message, 'error');
+  } finally {
+    if (window.Progress) window.Progress.hide();
+    updateRibbonDocState();
+  }
+}
+
+export async function openRedactManualFromEditor() {
+  const currentBytes = await getEditorBytesOrAlert();
+  if (!currentBytes) return;
+  if (typeof window.redactOpenBytes !== 'function') {
+    if (window.toast) window.toast('Chức năng che thông tin chưa sẵn sàng, hãy tải lại trang.', 'error');
+    return;
+  }
+  pushDocUndoState('Che thông tin thủ công');
+  await window.redactOpenBytes(currentBytes, (window.getEditorFileName && window.getEditorFileName()) || 'tailieu.pdf');
+  window.switchTab?.('tab-redact');
 }
 
 // 9. Nén PDF

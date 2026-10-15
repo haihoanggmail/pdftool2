@@ -791,53 +791,64 @@ function selectMergeFile(index) {
     renderMergePreview();
 }
 
+let mergeViewer = null;
+function getMergeViewer() {
+    if (mergeViewer) return mergeViewer;
+    const area = document.getElementById('merge-preview-area');
+    if (!area || !window.HViewer) return null;
+    mergeViewer = HViewer.create(area, {
+        emptyText: 'Nhấn vào một file ở danh sách bên trái để xem trước.',
+        barParent: area.previousElementSibling,
+        mode: 'width',
+        onPage: (n) => { if (n > 0) mergePreviewPage = n; updateMergeIndicator(); }
+    });
+    return mergeViewer;
+}
+
+function updateMergeIndicator() {
+    const f = mergeSelectedFile;
+    const indicator = document.getElementById('merge-page-indicator');
+    const prevBtn = document.getElementById('merge-prev-btn');
+    const nextBtn = document.getElementById('merge-next-btn');
+    if (!indicator) return;
+    if (!f) { indicator.textContent = '0 / 0'; prevBtn.disabled = true; nextBtn.disabled = true; return; }
+    indicator.textContent = `${mergePreviewPage} / ${f.pageCount}`;
+    prevBtn.disabled = mergePreviewPage <= 1;
+    nextBtn.disabled = mergePreviewPage >= f.pageCount;
+}
+
 function changeMergePreviewPage(dir) {
     if (!mergeSelectedFile) return;
     const n = mergePreviewPage + dir;
     if (n < 1 || n > mergeSelectedFile.pageCount) return;
     mergePreviewPage = n;
-    renderMergePreview();
+    const v = getMergeViewer();
+    if (v) v.goto(n);
+    updateMergeIndicator();
 }
 
 async function renderMergePreview() {
     const area = document.getElementById('merge-preview-area');
-    const canvas = document.getElementById('merge-preview-canvas');
-    const empty = document.getElementById('merge-preview-empty');
     const title = document.getElementById('merge-preview-title');
-    const indicator = document.getElementById('merge-page-indicator');
-    const prevBtn = document.getElementById('merge-prev-btn');
-    const nextBtn = document.getElementById('merge-next-btn');
     if (!area) return;
+    const v = getMergeViewer();
+    if (!v) return;
     const f = mergeSelectedFile;
     if (!f) {
         ++mergePreviewTaskId;
-        mergePreviewKey = '';
-        if (mergePreviewRenderTask) { try { mergePreviewRenderTask.cancel(); } catch (e) {} }
-        canvas.style.display = 'none';
-        empty.style.display = 'block';
-        empty.textContent = 'Nhấn vào một file ở danh sách bên trái để xem trước.';
+        v.clear();
         title.textContent = 'XEM TRƯỚC';
-        indicator.textContent = '0 / 0';
-        prevBtn.disabled = true;
-        nextBtn.disabled = true;
+        updateMergeIndicator();
         return;
     }
-    const total = f.pageCount;
-    if (mergePreviewPage > total) mergePreviewPage = total;
-    if (mergePreviewPage < 1) mergePreviewPage = 1;
     title.textContent = 'XEM TRƯỚC: ' + f.name;
-    indicator.textContent = `${mergePreviewPage} / ${total}`;
-    prevBtn.disabled = mergePreviewPage <= 1;
-    nextBtn.disabled = mergePreviewPage >= total;
-
-    const availW = area.clientWidth - 30;
-    if (availW < 50 || typeof pdfjsLib === 'undefined') return;   // tab đang ẩn: switchTab sẽ gọi lại
-    const key = [ mergeFileId(f), mergePreviewPage, availW ].join('|');
-    if (key === mergePreviewKey) return;
-    const prevKeyFile = mergePreviewKey.split('|')[0];
-    mergePreviewKey = key;
+    if (mergePreviewPage > f.pageCount) mergePreviewPage = f.pageCount;
+    if (mergePreviewPage < 1) mergePreviewPage = 1;
+    updateMergeIndicator();
+    if (typeof pdfjsLib === 'undefined') return;
+    const key = mergeFileId(f);
+    if (v.getKey() === key) { v.relayout(); return; }
     const taskId = ++mergePreviewTaskId;
-    if (mergePreviewRenderTask) { try { mergePreviewRenderTask.cancel(); } catch (e) {} }
     try {
         let docPromise = mergePreviewDocs.get(f);
         if (!docPromise) {
@@ -846,44 +857,16 @@ async function renderMergePreview() {
         }
         const doc = await docPromise;
         if (taskId !== mergePreviewTaskId) return;
-        const page = await doc.getPage(mergePreviewPage);
-        if (taskId !== mergePreviewTaskId) return;
-        const base = page.getViewport({ scale: 1 });
-        const cssScale = Math.min(availW / base.width, 3);
-        const dpr = Math.min(window.devicePixelRatio || 1, 2);
-        const vp = page.getViewport({ scale: cssScale * dpr });
-        canvas.width = Math.floor(vp.width);
-        canvas.height = Math.floor(vp.height);
-        canvas.style.width = Math.floor(vp.width / dpr) + 'px';
-        canvas.style.height = Math.floor(vp.height / dpr) + 'px';
-        mergePreviewRenderTask = page.render({ canvasContext: canvas.getContext('2d'), viewport: vp });
-        await mergePreviewRenderTask.promise;
-        if (taskId !== mergePreviewTaskId) return;
-        empty.style.display = 'none';
-        canvas.style.display = 'block';
-        if (key.split('|')[0] !== prevKeyFile) area.scrollTop = 0;
+        v.setDoc(doc, key);
     } catch (e) {
-        if (e && e.name === 'RenderingCancelledException') return;
         if (taskId !== mergePreviewTaskId) return;
-        mergePreviewKey = '';
         mergePreviewDocs.delete(f);
-        canvas.style.display = 'none';
-        empty.style.display = 'block';
-        empty.textContent = 'Không thể xem trước file này.';
+        v.clear();
+        const em = area.querySelector('.hv-empty');
+        if (em) em.textContent = 'Không thể xem trước file này.';
         console.warn('Lỗi xem trước:', e);
     }
 }
-
-(function bindMergePreviewResize() {
-    let t = null;
-    window.addEventListener('resize', () => {
-        clearTimeout(t);
-        t = setTimeout(() => {
-            const tab = document.getElementById('tab-merge');
-            if (tab && tab.classList.contains('active')) renderMergePreview();
-        }, 200);
-    });
-})();
 
 function moveMergeFile(index, dir) {
     const target = index + dir;

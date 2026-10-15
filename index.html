@@ -204,8 +204,7 @@
                     </div>
                 </div>
                 <div class="merge-preview-area" id="merge-preview-area">
-                    <canvas id="merge-preview-canvas"></canvas>
-                    <div class="merge-preview-empty" id="merge-preview-empty">Nhấn vào một file ở danh sách bên trái để xem trước.</div>
+
                 </div>
             </div>
         </div>
@@ -274,6 +273,12 @@
             <div class="right-panel" style="position: relative;">
                 <div class="preview-header">
                     <span style="font-weight: bold; color: var(--primary);">KHUNG ĐỐI CHIẾU THÔNG MINH</span>
+                    <div class="hv-bar" style="margin-left:auto;">
+                        <button type="button" class="btn btn-small" onclick="cmpZoomBy(1/1.2)" title="Thu nhỏ (Ctrl + cuộn xuống)">➖</button>
+                        <span class="hv-zl" id="cmp-zoom-label">98%</span>
+                        <button type="button" class="btn btn-small" onclick="cmpZoomBy(1.2)" title="Phóng to (Ctrl + cuộn lên)">➕</button>
+                        <button type="button" class="btn btn-small" onclick="cmpZoomFit()" title="Vừa chiều ngang khung">↔ Vừa khung</button>
+                    </div>
                 </div>
                 <div class="compare-view" id="compare-view-container" style="height: 100%;">
                     <div id="compare-pane-1" class="compare-pane" onscroll="handleSyncScroll(1)">
@@ -977,6 +982,13 @@
                     <span class="merge-preview-title" id="tl-list-title">DANH SÁCH FILE</span>
                 </div>
                 <div class="file-list" id="tl-list" style="margin-top:8px;"></div>
+                <div id="tl-prev-card" style="display:none; flex-direction:column; height:400px; min-height:260px; margin-top:10px;">
+                    <div class="preview-header" id="tl-prev-head">
+                        <span class="merge-preview-title" id="tl-prev-title">XEM TRƯỚC</span>
+                        <span id="tl-prev-page" style="font-weight:bold; font-size:13px;"></span>
+                    </div>
+                    <div class="merge-preview-area" id="tl-prev-area"></div>
+                </div>
                 <div id="tl-progress-wrap" style="display:none; margin-top:10px;">
                     <div style="height:8px; background:#e1dfdd; border-radius:4px; overflow:hidden;"><div id="tl-progress-bar" style="height:100%; width:0; background:var(--success); transition:width .2s;"></div></div>
                     <div id="tl-status" class="editor-hint" style="margin-top:4px;"></div>
@@ -1150,6 +1162,7 @@
 <script src="legacy/91-i18n-b.js"></script>
 <script src="legacy/95-multipage.js"></script>
 <script src="legacy/96-editor-sig.js"></script>
+<script src="legacy/97-viewer.js"></script>
 <script src="legacy/fonts-data.js" defer></script>
 <script type="module" src="./src/main.js"></script>
 </body>

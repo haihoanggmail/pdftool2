@@ -1713,6 +1713,45 @@ self.onmessage = async (ev) => {
         if (window.toast) window.toast('Đã khôi phục về file gốc ban đầu.', 'info');
     }
 
+    // ----- Xem trước nhiều trang cho file đang chọn (Ctrl + cuộn để phóng to / thu nhỏ) -----
+    let prevViewer = null, prevDoc = null, prevId = null, prevTask = 0;
+    async function updateToolPreview() {
+        const card = $('tl-prev-card');
+        if (!card || !window.HViewer || typeof pdfjsLib === 'undefined') return;
+        if (INFO[tool].accept === 'img') { card.style.display = 'none'; return; }
+        const list = curList();
+        if (!list.length) { card.style.display = 'none'; if (prevViewer) prevViewer.clear(); prevId = null; return; }
+        card.style.display = 'flex';
+        if (!prevViewer) {
+            prevViewer = HViewer.create($('tl-prev-area'), {
+                emptyText: 'Bấm vào một file ở danh sách để xem trước.',
+                barParent: $('tl-prev-head'), mode: 'multi',
+                onPage: (n, t) => { const e = $('tl-prev-page'); if (e) e.textContent = t ? n + ' / ' + t : ''; }
+            });
+        }
+        let it = list.find(x => x.id === prevId && !x.enc) || list.find(x => !x.enc) || null;
+        if (!it) { prevViewer.clear(); $('tl-prev-title').textContent = 'XEM TRƯỚC'; return; }
+        prevId = it.id;
+        $('tl-prev-title').textContent = 'XEM TRƯỚC: ' + it.name;
+        const key = it.id + ':' + it.bytes.byteLength;
+        if (prevViewer.getKey() === key) return;
+        const my = ++prevTask;
+        try {
+            const doc = await pdfjsLib.getDocument({ data: toBytes(it) }).promise;
+            if (my !== prevTask) { doc.destroy(); return; }
+            prevViewer.setDoc(doc, key);
+            if (prevDoc) { const old = prevDoc; setTimeout(() => old.destroy().catch(() => {}), 500); }
+            prevDoc = doc;
+        } catch (e) { prevViewer.clear(); }
+    }
+    document.addEventListener('click', e => {
+        const row = e.target.closest && e.target.closest('#tl-list .tl-row');
+        if (!row || e.target.closest('button,a,input,label')) return;
+        const idx = Array.prototype.indexOf.call(row.parentNode.querySelectorAll('.tl-row'), row);
+        const it = curList()[idx];
+        if (it && it.id !== prevId) { prevId = it.id; updateToolPreview(); }
+    });
+
     function render() {
         const list = curList(), kind = INFO[tool].accept;
         $('tl-list-title').textContent = kind === 'img' ? 'DANH SÁCH ẢNH' : 'DANH SÁCH FILE PDF';
@@ -1787,6 +1826,7 @@ self.onmessage = async (ev) => {
             box.innerHTML = chainBannerHtml + headerHtml + rowsHtml;
         }
 
+        updateToolPreview();
         const hasOut = lists.pdf.concat(lists.img).some(it => it.outs && it.outs.length);
         const selCount = list.filter(x => x.selected !== false).length;
         $('tl-run-btn').disabled = busy || !selCount;

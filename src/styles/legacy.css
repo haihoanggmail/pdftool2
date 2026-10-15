@@ -440,3 +440,23 @@
             html[data-theme="dark"] body { background: #fff !important; color: #000 !important; }
         }
 .region-select-box{position:absolute;z-index:2000;border:2px solid #2563eb;background:rgba(37,99,235,.12);pointer-events:none;display:none}.region-selected{outline:2px solid #2563eb!important;outline-offset:2px;background-color:rgba(37,99,235,.08)!important}.region-toolbar{display:flex;gap:6px;align-items:center;margin-top:8px;flex-wrap:wrap}.region-toolbar button{width:auto!important;margin:0!important;padding:7px 10px!important;font-size:12px}.region-status{font-size:12px;color:var(--primary);font-weight:600;margin-top:7px;min-height:16px}#editor-page-shell.region-mode{cursor:crosshair}.region-tool-btn{background-color:#f0f0f0;color:#333;border:1px solid #cbd5e1}.region-tool-btn:hover{background-color:#e2e8f0}.region-tool-btn.active{background-color:var(--primary);color:#fff;border-color:var(--primary)}html[data-theme="dark"] .region-tool-btn{background-color:#2f343b;color:#e6e8eb;border-color:#4a505a}html[data-theme="dark"] .region-tool-btn:hover{background-color:#3a4048}html[data-theme="dark"] .region-tool-btn.active{background-color:var(--primary);color:#fff;border-color:var(--primary)}
+
+
+/* ===== Bộ xem trước PDF dùng chung (97-viewer.js) ===== */
+.hv-area { position: relative; overflow: auto; background: #f3f2f1; border-radius: 4px; }
+.merge-preview-area.hv-area { display: block; padding: 0; }
+.hv-pages { display: flex; flex-wrap: wrap; justify-content: center; align-content: flex-start; gap: 12px; padding: 14px; }
+.hv-page { position: relative; background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,.25); flex: 0 0 auto; overflow: hidden; }
+.hv-page canvas { display: block; }
+.hv-page .hv-num { position: absolute; right: 6px; bottom: 4px; z-index: 2; font-size: 11px; background: rgba(15,23,42,.55); color: #fff; border-radius: 9px; padding: 0 7px; opacity: 0; transition: opacity .15s; pointer-events: none; }
+.hv-area.hv-multi .hv-page .hv-num, .hv-page:hover .hv-num { opacity: 1; }
+.hv-page:not(.hv-ready)::after { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, #fff 0, #f1f5f9 50%, #fff 100%); background-size: 200% 100%; animation: hvShine 1.2s linear infinite; }
+@keyframes hvShine { to { background-position: -200% 0; } }
+.hv-empty { color: gray; font-style: italic; text-align: center; padding: 40px 10px; }
+.hv-bar { display: flex; align-items: center; gap: 6px; flex-shrink: 0; font-size: 12px; }
+.hv-bar .btn { width: auto; margin: 0; padding: 3px 9px; }
+.hv-bar .hv-zl { min-width: 42px; text-align: center; font-weight: 700; }
+.hv-bar .hv-on { background: var(--primary, #0078d4); color: #fff; }
+.preview-header { flex-wrap: wrap; gap: 8px; }
+html[data-theme="dark"] .hv-area { background: #1d2024; }
+html[data-theme="dark"] .hv-page:not(.hv-ready)::after { background: #2a2f36; animation: none; }

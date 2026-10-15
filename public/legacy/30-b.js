@@ -142,6 +142,7 @@ self.onmessage = async (ev) => {
 
     function render() {
         const list = $('w2d-list');
+        window.__hvItems_w2d = items;
         if (!items.length) {
             list.innerHTML = '<div style="color:gray; font-style:italic; text-align:center; padding-top:40px;">Chưa chọn file nào. Kéo thả PDF vào đây hoặc bấm "Chọn file PDF".</div>';
         } else {
