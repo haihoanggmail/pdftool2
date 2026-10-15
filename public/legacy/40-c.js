@@ -303,16 +303,29 @@ self.onmessage = async (ev) => {
         if (mode === 'text') return { v: raw };
         let t = raw.trim();
         if (!t) return { v: raw };
+
+        // Negative numbers in accounting format: (1.234.567), -1.234.567, or trailing minus 1.234.567-
         let neg = false;
         if (/^\(.*\)$/.test(t)) { neg = true; t = t.slice(1, -1).trim(); }
+        else if (/-$/.test(t)) { neg = true; t = t.slice(0, -1).trim(); }
+        else if (/^-/.test(t)) { neg = true; t = t.slice(1).trim(); }
+
         let pre = '', suf = '';
         let m = t.match(/^([$€£¥])\s*(.*)$/);
         if (m) { pre = m[1]; t = m[2]; }
         m = t.match(/^(.*?)\s*(%|₫|đ|VND|VNĐ|USD|EUR|\$|€)$/i);
         if (m) { suf = m[2]; t = m[1]; }
-        if (/^-/.test(t)) { neg = !neg || neg; t = t.slice(1); if (raw.trim()[0] === '(') neg = true; }
+
+        // Keep codes with leading zeros (001248, phone numbers, barcode, bank accounts)
+        if (/^0\d+$/.test(t) || /^0[\d\s\-\.]+$/.test(t)) return { v: raw };
+
+        // Keep date formats unchanged (15/10/2026, 2026-10-15, 15-10-2026)
+        if (/^\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}$/.test(t) || /^\d{4}-\d{2}-\d{2}$/.test(t)) {
+            return { v: raw };
+        }
+
         if (!/^\d[\d.,]*$/.test(t)) return { v: raw };
-        if (/^0\d+$/.test(t)) return { v: raw }; // 007, số điện thoại...
+
         let thou = style === 'vn' ? '.' : ',', dec = style === 'vn' ? ',' : '.';
         // chuẩn hóa
         const parts = t.split(dec);
@@ -325,7 +338,7 @@ self.onmessage = async (ev) => {
         } else if (!/^\d+$/.test(intPart)) return { v: raw };
         if (decPart && !/^\d+$/.test(decPart)) return { v: raw };
         if (!hasThou && !decPart && /[.,]/.test(t)) return { v: raw };
-        // "1.200" ở kiểu vn đã nhận là 1200; ở kiểu en "1.200" là 1,2 (thập phân)
+
         const num = parseFloat(intPart.split(thou).join('') + (decPart ? '.' + decPart : ''));
         if (!isFinite(num)) return { v: raw };
         let val = neg ? -num : num;
@@ -368,6 +381,53 @@ self.onmessage = async (ev) => {
             const b = { style: 'thin', color: { argb: argb(border) } };
             cell.border = { top: b, left: b, bottom: b, right: b };
         }
+    }
+
+    function buildMergedSheet(wb, allTables, o, used) {
+        const ws = wb.addWorksheet(safeName('Bảng gộp liên tục', used));
+        let maxCols = 0;
+        let widestTable = allTables[0].t;
+        allTables.forEach(({ t }) => {
+            const cols = (t.xs ? t.xs.length - 1 : 0);
+            if (cols > maxCols) { maxCols = cols; widestTable = t; }
+        });
+        const G = widestTable.xs || [];
+        for (let i = 0; i < G.length - 1; i++) {
+            ws.getColumn(i + 1).width = Math.max(6, Math.min(120, (G[i + 1] - G[i]) / 5.7));
+        }
+
+        let currRow = 1;
+        const merges = [];
+        allTables.forEach(({ pg, t }, idx) => {
+            const nR = t.ys.length - 1;
+            const start = currRow;
+            for (let r = 0; r < nR; r++) {
+                ws.getRow(start + r).height = Math.max(8, t.ys[r + 1] - t.ys[r]);
+            }
+            t.cells.forEach(c => {
+                const c0 = c.c + 1;
+                const cEnd = Math.max(c0, c.c + (c.cs || 1));
+                const r0 = start + c.r;
+                const r1 = start + c.r + (c.rs || 1) - 1;
+                const tv = toValue(c.text, o.numStyle, o.numMode);
+                const cell = ws.getCell(r0, c0);
+                cell.value = tv.v;
+                if (tv.fmt) cell.numFmt = tv.fmt;
+                styleCell(cell, c, o.numMode, o.numStyle, t.border);
+                if (cEnd > c0 || r1 > r0) {
+                    for (let rr = r0; rr <= r1; rr++) for (let cc = c0; cc <= cEnd; cc++) {
+                        if (rr === r0 && cc === c0) continue;
+                        const x = ws.getCell(rr, cc);
+                        if (c.fill) x.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: argb(c.fill) } };
+                        if (t.border) { const b = { style: 'thin', color: { argb: argb(t.border) } }; x.border = { top: b, left: b, bottom: b, right: b }; }
+                    }
+                    merges.push([r0, c0, r1, cEnd]);
+                }
+            });
+            currRow = start + nR + 1; // 1 blank row between sections
+        });
+        merges.forEach(m => { try { ws.mergeCells(m[0], m[1], m[2], m[3]); } catch (e) {} });
+        ws.pageSetup = { orientation: 'portrait', paperSize: 9, fitToPage: !!o.fit, fitToWidth: 1, fitToHeight: 0 };
     }
 
     function buildSheetPage(wb, pg, o, used) {
@@ -502,11 +562,24 @@ self.onmessage = async (ev) => {
         o.numStyle = detectNumStyle(pages, o.numMode);
         const used = {};
         let tcount = 0, sheetCount = 0;
-        pages.forEach(pg => {
-            if (o.mode === 'table') {
-                pg.items.filter(i => i.type === 'table').forEach(it => { buildSheetTable(wb, pg, it, ++tcount, o, used); sheetCount++; });
-            } else if (pg.items.length) { buildSheetPage(wb, pg, o, used); sheetCount++; }
-        });
+        if (o.mode === 'merged') {
+            const allTables = [];
+            pages.forEach(pg => {
+                pg.items.filter(i => i.type === 'table').forEach(t => allTables.push({ pg, t }));
+            });
+            if (allTables.length) {
+                buildMergedSheet(wb, allTables, o, used);
+                sheetCount = 1;
+            } else {
+                pages.forEach(pg => { if (pg.items.length) { buildSheetPage(wb, pg, o, used); sheetCount++; } });
+            }
+        } else {
+            pages.forEach(pg => {
+                if (o.mode === 'table') {
+                    pg.items.filter(i => i.type === 'table').forEach(it => { buildSheetTable(wb, pg, it, ++tcount, o, used); sheetCount++; });
+                } else if (pg.items.length) { buildSheetPage(wb, pg, o, used); sheetCount++; }
+            });
+        }
         if (!sheetCount) return null;
         const buf = await wb.xlsx.writeBuffer();
         return { blob: new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), sheets: sheetCount, tables: pages.reduce((n, p) => n + p.items.filter(i => i.type === 'table').length, 0) };
@@ -529,6 +602,15 @@ self.onmessage = async (ev) => {
                     (it.warn ? '<div style="font-size:11px; color:#b45309; margin-top:2px;">⚠ ' + esc(it.warn) + '</div>' : '') + '</div>';
                 const act = document.createElement('div');
                 act.style.cssText = 'display:flex; gap:6px; flex-shrink:0;';
+                if (it.pagesData && it.pagesData.some(p => p.items && p.items.some(i => i.type === 'table'))) {
+                    const prevBtn = document.createElement('button');
+                    prevBtn.className = 'btn btn-small';
+                    prevBtn.style.cssText = 'background:#0284c7; color:#fff;';
+                    prevBtn.textContent = '👁️ Xem bảng';
+                    prevBtn.title = 'Xem trước bảng tính';
+                    prevBtn.onclick = () => w2xPreview(it.id);
+                    act.appendChild(prevBtn);
+                }
                 if (it.blob) {
                     const b = document.createElement('button');
                     b.className = 'btn btn-small btn-success';
@@ -551,6 +633,96 @@ self.onmessage = async (ev) => {
         $('w2x-run-btn').disabled = busy || !items.length;
         $('w2x-zip-btn').style.display = items.filter(i => i.blob).length > 1 ? 'flex' : 'none';
         $('w2x-clear-btn').style.display = items.length && !busy ? 'flex' : 'none';
+    }
+
+    function w2xPreview(id) {
+        const it = items.find(x => x.id === id);
+        if (!it || !it.pagesData) return;
+        const allTables = [];
+        it.pagesData.forEach(pg => {
+            pg.items.filter(i => i.type === 'table').forEach((t, tidx) => {
+                allTables.push({ pg: pg.page, tidx: tidx + 1, table: t });
+            });
+        });
+        if (!allTables.length) {
+            alert('Không tìm thấy bảng để xem trước.');
+            return;
+        }
+
+        const modal = document.createElement('div');
+        modal.className = 'auth-modal-overlay';
+        modal.style.zIndex = '9999';
+
+        let activeIdx = 0;
+        function renderTableContent() {
+            const cur = allTables[activeIdx];
+            const t = cur.table;
+            const nR = t.ys.length - 1;
+            const nC = t.xs.length - 1;
+            const grid = Array.from({ length: nR }, () => Array(nC).fill(''));
+            t.cells.forEach(c => {
+                if (c.r < nR && c.c < nC) {
+                    grid[c.r][c.c] = esc(c.text || '');
+                }
+            });
+
+            let tableHtml = '<table style="width:100%; border-collapse:collapse; font-size:12px;">';
+            grid.forEach((row, rIdx) => {
+                tableHtml += '<tr>';
+                row.forEach((cell, cIdx) => {
+                    const tag = rIdx === 0 ? 'th' : 'td';
+                    const style = rIdx === 0
+                        ? 'background:#f1f5f9; font-weight:700; border:1px solid #cbd5e1; padding:6px 10px; text-align:left;'
+                        : 'border:1px solid #e2e8f0; padding:5px 8px; background:' + (rIdx % 2 === 0 ? '#fff' : '#f8fafc') + ';';
+                    tableHtml += '<' + tag + ' style="' + style + '">' + (cell || '&nbsp;') + '</' + tag + '>';
+                });
+                tableHtml += '</tr>';
+            });
+            tableHtml += '</table>';
+
+            const container = modal.querySelector('#w2x-preview-table-wrap');
+            if (container) container.innerHTML = tableHtml;
+            const title = modal.querySelector('#w2x-preview-sub');
+            if (title) title.textContent = `Bảng ${cur.tidx} • Trang ${cur.pg} (${nR} hàng × ${nC} cột)`;
+        }
+
+        modal.innerHTML = `
+            <div class="auth-modal-dialog" style="max-width:880px; width:94%; max-height:85vh; display:flex; flex-direction:column;">
+                <div class="auth-modal-header" style="display:flex; justify-content:space-between; align-items:center;">
+                    <div>
+                        <h3 style="margin:0; font-size:15px; color:#1e293b;">📊 Xem trước bảng: ${esc(it.file.name)}</h3>
+                        <div id="w2x-preview-sub" style="font-size:11px; color:#64748b; margin-top:2px;"></div>
+                    </div>
+                    <button class="auth-modal-close" id="w2x-preview-close" style="background:none; border:none; font-size:20px; cursor:pointer;">&times;</button>
+                </div>
+                <div style="padding:8px 16px; background:#f8fafc; border-bottom:1px solid #e2e8f0; display:flex; gap:8px; align-items:center;">
+                    <span style="font-size:12px; font-weight:600;">Chọn bảng:</span>
+                    <select id="w2x-table-select" style="padding:4px 8px; font-size:12px; border:1px solid #cbd5e1; border-radius:4px; background:#fff;">
+                        ${allTables.map((t, i) => `<option value="${i}">Bảng ${t.tidx} (Trang ${t.pg})</option>`).join('')}
+                    </select>
+                </div>
+                <div id="w2x-preview-table-wrap" style="flex:1; overflow:auto; padding:12px; min-height:220px; max-height:480px; background:#fff;">
+                </div>
+                <div style="padding:10px 16px; background:#f8fafc; border-top:1px solid #e2e8f0; display:flex; justify-content:flex-end; gap:8px;">
+                    <button class="btn btn-small" id="w2x-modal-close-btn">Đóng</button>
+                    ${it.blob ? '<button class="btn btn-small btn-success" id="w2x-modal-dl-btn">⬇ Tải .xlsx</button>' : ''}
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+
+        const sel = modal.querySelector('#w2x-table-select');
+        sel.addEventListener('change', e => {
+            activeIdx = +e.target.value;
+            renderTableContent();
+        });
+        const close = () => modal.remove();
+        modal.querySelector('#w2x-preview-close').addEventListener('click', close);
+        modal.querySelector('#w2x-modal-close-btn').addEventListener('click', close);
+        const dlBtn = modal.querySelector('#w2x-modal-dl-btn');
+        if (dlBtn) dlBtn.addEventListener('click', () => { dl(it); close(); });
+        modal.addEventListener('click', e => { if (e.target === modal) close(); });
+        renderTableContent();
     }
 
     function dl(it) {
@@ -576,7 +748,11 @@ self.onmessage = async (ev) => {
                     const tc = await (await pdf.getPage(p)).getTextContent();
                     tc.items.forEach(x => { chars += (x.str || '').trim().length; });
                 }
-                if (!chars) it.warn = 'PDF này có vẻ là bản scan (không có chữ thật) nên không trích được bảng. Hãy chạy Chuyển đổi → OCR trước.';
+                if (!chars) {
+                    it.warn = 'PDF này có vẻ là bản scan (không có chữ thật) nên không trích được bảng. Hãy chạy Chuyển đổi → OCR trước.';
+                    const ocrHint = $('w2x-ocr-hint');
+                    if (ocrHint) ocrHint.style.display = 'block';
+                }
             } catch (e) {
                 it.warn = 'Không đọc được thông tin file (có thể bị đặt mật khẩu).';
             }
@@ -618,6 +794,7 @@ self.onmessage = async (ev) => {
                 setProgress(0, 'Đang chuyển ' + it.file.name + ' (' + (i + 1) + '/' + items.length + ')...');
                 try {
                     const pages = await extractOne(it);
+                    it.pagesData = pages;
                     setProgress(100, 'Đang tạo file Excel cho ' + it.file.name + '...');
                     const out = await buildWorkbook(pages, { mode: $('w2x-mode').value, numMode: $('w2x-num').value, fit: $('w2x-fit').checked });
                     if (!out) { it.status = 'err'; it.text = 'Không tìm thấy bảng hoặc chữ nào để đưa vào Excel.'; render(); continue; }
@@ -663,7 +840,7 @@ self.onmessage = async (ev) => {
         inp.addEventListener('change', () => { addFiles(inp.files); inp.value = ''; });
         $('w2x-run-btn').addEventListener('click', run);
         $('w2x-zip-btn').addEventListener('click', zipAll);
-        $('w2x-clear-btn').addEventListener('click', () => { items = []; $('w2x-progress-wrap').style.display = 'none'; render(); });
+        $('w2x-clear-btn').addEventListener('click', () => { items = []; $('w2x-progress-wrap').style.display = 'none'; if ($('w2x-ocr-hint')) $('w2x-ocr-hint').style.display = 'none'; render(); });
         const drop = $('w2x-drop');
         drop.addEventListener('dragover', e => { e.preventDefault(); drop.style.outline = '2px dashed var(--primary)'; });
         drop.addEventListener('dragleave', () => { drop.style.outline = ''; });

@@ -11,7 +11,7 @@ export function initEditorWordRibbon() {
   const tabEditor = document.getElementById('tab-editor');
   if (!tabEditor) return;
 
-  // Create ribbon container if not already present
+  // 1. Create ribbon container if not already present
   if (!document.getElementById('word-ribbon-bar')) {
     const ribbonEl = document.createElement('div');
     ribbonEl.id = 'word-ribbon-bar';
@@ -19,27 +19,75 @@ export function initEditorWordRibbon() {
     ribbonEl.innerHTML = buildRibbonHTML();
     tabEditor.insertBefore(ribbonEl, tabEditor.firstChild);
 
+    // 2. Insert Microsoft Word Ruler directly beneath Ribbon
+    const rulerEl = document.createElement('div');
+    rulerEl.id = 'word-ruler-bar';
+    rulerEl.className = 'word-ruler-bar';
+    rulerEl.innerHTML = buildWordRulerHTML();
+    ribbonEl.after(rulerEl);
+
+    // 3. Insert Floating Mini-Toolbar into body
+    if (!document.getElementById('word-mini-toolbar')) {
+      const miniToolbarEl = document.createElement('div');
+      miniToolbarEl.id = 'word-mini-toolbar';
+      miniToolbarEl.className = 'word-mini-toolbar';
+      miniToolbarEl.innerHTML = buildMiniToolbarHTML();
+      document.body.appendChild(miniToolbarEl);
+    }
+
+    // 4. Insert Find & Replace Modal into body
+    if (!document.getElementById('word-find-replace-modal')) {
+      const dialogEl = document.createElement('div');
+      dialogEl.id = 'word-find-replace-modal';
+      dialogEl.style.display = 'none';
+      dialogEl.innerHTML = buildFindReplaceDialogHTML();
+      document.body.appendChild(dialogEl);
+    }
+
+    // 5. Insert Word Status Bar at bottom
+    if (!document.getElementById('word-status-bar')) {
+      const statusBarEl = document.createElement('div');
+      statusBarEl.id = 'word-status-bar';
+      statusBarEl.className = 'word-status-bar';
+      statusBarEl.innerHTML = buildWordStatusBarHTML();
+      tabEditor.appendChild(statusBarEl);
+      // Hide the legacy basic pagebar to avoid duplicate bars
+      const oldBar = tabEditor.querySelector('.editor-pagebar');
+      if (oldBar) oldBar.style.display = 'none';
+    }
+
     wireRibbonEvents();
+    initWordTextSelectionAndEditing();
   }
 
   // Hook global notification when doc is loaded in editor
-  window.onEditorDocLoaded = updateRibbonDocState;
+  const prevDocLoaded = window.onEditorDocLoaded;
+  window.onEditorDocLoaded = function() {
+    if (typeof prevDocLoaded === 'function') prevDocLoaded();
+    updateRibbonDocState();
+    updateWordRuler();
+    updateWordDocWordCount();
+    setupSpansForWordEditing();
+  };
   updateRibbonDocState();
+  updateWordRuler();
 }
 
 function buildRibbonHTML() {
   return `
     <div class="ribbon-tabs-bar">
-      <button class="ribbon-file-btn" id="rb-file-menu-btn" title="Menu Tệp / File (Ctrl+O để mở file)">📁 TỆP</button>
-      <button class="ribbon-tab-btn active" data-tab="home">🏠 Trang chủ</button>
-      <button class="ribbon-tab-btn" data-tab="draw">🎨 Vẽ &amp; Hình khối</button>
-      <button class="ribbon-tab-btn" data-tab="layout">📐 Bố trí &amp; Canh lề</button>
-      <button class="ribbon-tab-btn" data-tab="insert">➕ Chèn &amp; Ký tên</button>
+      <button class="ribbon-file-btn" id="rb-file-menu-btn" title="Menu Tệp / File (Ctrl+O để mở file, Ctrl+S để lưu)">📁 TỆP</button>
+      <button class="ribbon-tab-btn active" data-tab="home">Trang chủ</button>
+      <button class="ribbon-tab-btn" data-tab="insert">Chèn</button>
+      <button class="ribbon-tab-btn" data-tab="draw">Vẽ &amp; Hình khối</button>
+      <button class="ribbon-tab-btn" data-tab="layout">Bố trí &amp; Canh lề</button>
+      <button class="ribbon-tab-btn" data-tab="review">Soát lỗi &amp; Bảo mật</button>
+      <button class="ribbon-tab-btn" data-tab="view">Xem &amp; Thu phóng</button>
       <button class="ribbon-tab-btn highlight" data-tab="pipeline">⚡ Tự động hóa</button>
 
       <div class="ribbon-right-tools">
-        <button class="rb-btn-compact" id="rb-quick-open-btn" style="background:#0078d4; color:#fff; font-weight:bold; border-color:#005a9e;" title="Mở file PDF (Ctrl + O)">
-          📂 Mở file (Ctrl+O)
+        <button class="rb-btn-compact" id="rb-quick-open-btn" style="background:#0078d4; color:#fff; font-weight:600; border-color:#005a9e;" title="Mở file PDF từ máy tính (Ctrl + O)">
+          📂 Mở file
         </button>
         <div class="ribbon-doc-badge" id="rb-doc-badge">
           <span>📄 Chưa mở file</span>
@@ -55,84 +103,237 @@ function buildRibbonHTML() {
     </div>
 
     <div class="ribbon-panels" id="rb-panels-container">
-      <!-- 1. HOME PANEL (TRANG CHỦ KIỂU MICROSOFT WORD) -->
+      <!-- 1. HOME PANEL (MICROSOFT WORD 365 RIBBON CHUẨN XÁC) -->
       <div class="ribbon-panel active" id="rb-panel-home">
+        <!-- GROUP 1: CLIPBOARD (BẢNG NHỚ TẠM) -->
         <div class="ribbon-group">
           <div class="ribbon-group-body">
-            <button class="rb-btn-large active btn-tool" id="tool-text" data-tool="text" title="Chọn và sửa văn bản trực tiếp trên trang (Click đúp vào chữ để sửa)">
-              <span class="rb-icon">🔤</span><span class="rb-label">Chọn &amp; Sửa Chữ</span>
+            <button class="rb-btn-large" id="rb-paste-btn" title="Dán nội dung từ bộ nhớ tạm (Ctrl + V)">
+              <span class="rb-icon">📋</span>
+              <span class="rb-label">Dán<br><small style="color:#6b7280;font-size:9.5px;">(Ctrl+V)</small></span>
             </button>
-            <button class="rb-btn-large region-tool-btn" id="region-mode-btn" data-tool="region" title="Khoanh vùng để di chuyển cả khối đối tượng">
-              <span class="rb-icon">▣</span><span class="rb-label">Chọn Vùng</span>
-            </button>
-            <button class="rb-btn-large btn-tool" id="tool-addtext" data-tool="addtext" title="Thêm chữ mới vào trang">
-              <span class="rb-icon">🅣</span><span class="rb-label">Thêm Chữ Mới</span>
-            </button>
+            <div class="rb-column" style="gap:2px;">
+              <button class="rb-btn-compact" id="rb-cut-btn" title="Cắt phần chữ đang chọn (Ctrl + X)">
+                <span>✂️</span> <span>Cắt</span>
+              </button>
+              <button class="rb-btn-compact" id="rb-copy-btn" title="Sao chép phần chữ đang chọn (Ctrl + C)">
+                <span>📄</span> <span>Sao chép</span>
+              </button>
+              <button class="rb-btn-compact" id="rb-format-painter-btn" title="Cọ sao chép định dạng (Format Painter)">
+                <span>🖌️</span> <span>Cọ định dạng</span>
+              </button>
+            </div>
           </div>
-          <div class="ribbon-group-title">VĂN BẢN</div>
+          <div class="ribbon-group-title">BẢNG NHỚ TẠM</div>
         </div>
 
+        <!-- GROUP 2: FONT (PHÔNG CHỮ THEO ĐÚNG ẢNH WORD) -->
         <div class="ribbon-group">
           <div class="ribbon-group-body">
-            <div class="rb-column">
+            <div class="rb-column" style="gap:3px;">
+              <!-- Hàng 1 Font: Tên Font, Cỡ chữ, Tăng cỡ, Giảm cỡ, Đổi hoa thường, Xóa format -->
               <div class="rb-row">
-                <select id="editor-text-font" class="rb-select" style="width:130px;" title="Phông chữ"></select>
-                <input type="number" id="editor-text-size" class="rb-input-num" value="12" min="4" max="200" step="0.5" title="Cỡ chữ (pt)" style="width:48px;">
-                <button class="rb-btn-compact" id="rb-font-inc" title="Tăng cỡ chữ (A+)" style="padding:1px 5px; font-weight:700;">A▲</button>
-                <button class="rb-btn-compact" id="rb-font-dec" title="Giảm cỡ chữ (A-)" style="padding:1px 5px; font-weight:700;">A▼</button>
-                <button class="rb-btn-compact btn-tool" id="editor-local-font-btn" onclick="loadLocalFontList()" title="Quét font có sẵn trong máy tính">🔍 Font</button>
+                <select id="editor-text-font" class="rb-select" style="width:142px;" title="Phông chữ">
+                  <option value="calibri">Calibri</option>
+                  <option value="times">Times New Roman</option>
+                  <option value="arial">Arial</option>
+                  <option value="roboto">Roboto</option>
+                  <option value="segoe">Segoe UI</option>
+                  <option value="georgia">Georgia</option>
+                  <option value="verdana">Verdana</option>
+                  <option value="courier">Courier New</option>
+                </select>
+                <select id="editor-text-size-select" class="rb-select" style="width:48px;" title="Cỡ chữ">
+                  <option value="8">8</option>
+                  <option value="9">9</option>
+                  <option value="10">10</option>
+                  <option value="11">11</option>
+                  <option value="12" selected>12</option>
+                  <option value="13">13</option>
+                  <option value="14">14</option>
+                  <option value="16">16</option>
+                  <option value="18">18</option>
+                  <option value="20">20</option>
+                  <option value="22">22</option>
+                  <option value="24">24</option>
+                  <option value="28">28</option>
+                  <option value="36">36</option>
+                  <option value="48">48</option>
+                  <option value="72">72</option>
+                </select>
+                <input type="number" id="editor-text-size" class="rb-input-num" value="12" min="4" max="200" step="0.5" title="Nhập trực tiếp cỡ chữ (pt)" style="width:42px; display:none;">
+                <button class="rb-btn-icon" id="rb-font-inc" title="Tăng cỡ chữ (A^) (Ctrl+Shift+>)"><b>A<sup>▲</sup></b></button>
+                <button class="rb-btn-icon" id="rb-font-dec" title="Giảm cỡ chữ (Av) (Ctrl+Shift+<)"><b>A<sub>▼</sub></b></button>
+                
+                <!-- Change Case Aa dropdown -->
+                <div style="position:relative; display:inline-block;">
+                  <button class="rb-btn-icon" id="rb-change-case-btn" title="Đổi kiểu chữ hoa / thường (Aa)"><b>Aa</b></button>
+                  <div id="rb-case-menu" style="display:none; position:absolute; top:100%; left:0; background:#fff; border:1px solid #d2d0ce; border-radius:4px; box-shadow:0 4px 12px rgba(0,0,0,0.15); z-index:100; min-width:160px; font-size:12px; padding:4px 0;">
+                    <div class="rb-case-opt" data-case="sentence" style="padding:6px 12px; cursor:pointer;">Viết hoa đầu câu</div>
+                    <div class="rb-case-opt" data-case="lower" style="padding:6px 12px; cursor:pointer;">chữ thường</div>
+                    <div class="rb-case-opt" data-case="upper" style="padding:6px 12px; cursor:pointer;">CHỮ HOA</div>
+                    <div class="rb-case-opt" data-case="title" style="padding:6px 12px; cursor:pointer;">Viết Hoa Mỗi Từ</div>
+                  </div>
+                </div>
+
+                <button class="rb-btn-icon" id="rb-clear-format-btn" title="Xóa toàn bộ định dạng về chuẩn (Clear Formatting)">
+                  <span>A<small style="color:#d946ef;font-size:10px;">🧹</small></span>
+                </button>
               </div>
-              <div class="rb-row" style="margin-top:2px;">
-                <button class="rb-btn-compact" id="rb-bold-btn" style="font-weight:900;" title="In đậm (Ctrl+B)">𝗕</button>
-                <button class="rb-btn-compact" id="rb-italic-btn" style="font-style:italic; font-family:serif;" title="In nghiêng (Ctrl+I)">𝐼</button>
-                <span style="font-size:11px;color:#555;margin-left:4px;">Màu chữ:</span>
-                <input type="color" id="editor-text-color" value="#000000" style="width:28px;height:24px;padding:0;border:1px solid #cbd5e1;cursor:pointer;border-radius:3px;" title="Màu chữ">
+
+              <!-- Hàng 2 Font: B, I, U, ab (strikethrough), x2, x^2, A hiệu ứng, Tô nền dạ quang, Màu chữ -->
+              <div class="rb-row">
+                <button class="rb-btn-icon" id="rb-bold-btn" title="In đậm (Bold - Ctrl+B)"><b>B</b></button>
+                <button class="rb-btn-icon" id="rb-italic-btn" title="In nghiêng (Italic - Ctrl+I)"><i style="font-family:serif;">I</i></button>
+                <button class="rb-btn-icon" id="rb-underline-btn" title="Gạch chân (Underline - Ctrl+U)"><u style="text-underline-offset:2px;">U</u></button>
+                <button class="rb-btn-icon" id="rb-strike-btn" title="Gạch giữa chữ (Strikethrough)"><s>ab</s></button>
+                <button class="rb-btn-icon" id="rb-sub-btn" title="Chỉ số dưới (Subscript)">x<sub>2</sub></button>
+                <button class="rb-btn-icon" id="rb-super-btn" title="Chỉ số trên (Superscript)">x<sup>2</sup></button>
+                <button class="rb-btn-icon" id="rb-text-effect-btn" title="Hiệu ứng chữ nghệ thuật (Word Art / Text Effects)" style="color:#0284c7;"><b>A</b></button>
+
+                <span style="width:1px; height:18px; background:#e1dfdd; margin:0 2px;"></span>
+
+                <!-- Highlight Color Picker (Bút dạ quang màu vàng) -->
+                <div class="rb-color-btn-wrap" id="rb-highlight-wrap" title="Màu tô sáng văn bản (Text Highlight Color)">
+                  <span style="font-size:12px; font-weight:700;">ab</span>
+                  <div class="rb-color-bar" id="rb-highlight-bar" style="background:#fef08a;"></div>
+                  <input type="color" id="editor-text-highlight" value="#fef08a" style="position:absolute; opacity:0; width:100%; height:100%; cursor:pointer;">
+                </div>
+
+                <!-- Font Color Picker (Chữ A vạch đỏ) -->
+                <div class="rb-color-btn-wrap" id="rb-color-wrap" title="Màu chữ (Font Color)">
+                  <span style="font-size:13px; font-weight:900;">A</span>
+                  <div class="rb-color-bar" id="rb-color-bar" style="background:#dc2626;"></div>
+                  <input type="color" id="editor-text-color" value="#000000" style="position:absolute; opacity:0; width:100%; height:100%; cursor:pointer;">
+                </div>
+
+                <button class="rb-btn-compact btn-tool" id="editor-local-font-btn" onclick="loadLocalFontList()" title="Quét phông chữ có sẵn trong máy tính của bạn" style="margin-left:2px; font-size:11px; padding:2px 5px;">
+                  🔍 Font máy
+                </button>
               </div>
             </div>
           </div>
-          <div class="ribbon-group-title">PHÔNG CHỮ &amp; ĐỊNH DẠNG</div>
+          <div class="ribbon-group-title">PHÔNG CHỮ</div>
         </div>
 
+        <!-- GROUP 3: PARAGRAPH (ĐOẠN VĂN THEO ĐÚNG ẢNH WORD) -->
         <div class="ribbon-group">
           <div class="ribbon-group-body">
-            <div class="rb-column">
+            <div class="rb-column" style="gap:3px;">
+              <!-- Hàng 1 Paragraph: Bullets, Numbering, Multilevel, Decrease Indent, Increase Indent, Sort, Paragraph mark -->
               <div class="rb-row">
-                <button class="rb-btn-compact" id="rb-page-prev" title="Trang trước">◀ Trước</button>
-                <span id="rb-page-num-display" style="font-weight:700; font-size:12px; color:#1e293b; min-width:48px; text-align:center;">1 / 1</span>
-                <button class="rb-btn-compact" id="rb-page-next" title="Trang sau">Sau ▶</button>
+                <button class="rb-btn-icon" id="rb-bullet-btn" title="Dấu đầu dòng (Bullets)">•≡</button>
+                <button class="rb-btn-icon" id="rb-numbering-btn" title="Đánh số thứ tự (Numbering)">1≡</button>
+                <button class="rb-btn-icon" id="rb-multilevel-btn" title="Danh sách đa cấp (Multilevel List)">1.a≡</button>
+                <span style="width:1px; height:16px; background:#e1dfdd; margin:0 1px;"></span>
+                <button class="rb-btn-icon" id="rb-indent-dec" title="Giảm thụt lề (Decrease Indent)">⇤</button>
+                <button class="rb-btn-icon" id="rb-indent-inc" title="Tăng thụt lề (Increase Indent)">⇥</button>
+                <button class="rb-btn-icon" id="rb-sort-btn" title="Sắp xếp theo thứ tự (Sort A-Z)">A↓Z</button>
+                <button class="rb-btn-icon" id="rb-pilcrow-btn" title="Hiện / Ẩn ký hiệu định dạng đoạn văn (¶)">¶</button>
               </div>
-              <div class="rb-row" style="margin-top:2px;">
-                <button class="rb-btn-compact" id="rb-zoom-out" title="Thu nhỏ">➖</button>
-                <button class="rb-btn-compact" id="rb-zoom-fit" title="Vừa chiều ngang khung">↔ Vừa khung</button>
-                <button class="rb-btn-compact" id="rb-zoom-in" title="Phóng to">➕</button>
+
+              <!-- Hàng 2 Paragraph: Căn trái, Căn giữa, Căn phải, Căn đều, Giãn dòng, Đổ nền, Viền -->
+              <div class="rb-row">
+                <button class="rb-btn-icon active" id="rb-align-left" title="Căn lề trái (Ctrl + L)" data-align="left">
+                  <span style="letter-spacing:-1px;">≡</span>
+                </button>
+                <button class="rb-btn-icon" id="rb-align-center" title="Căn giữa (Ctrl + E)" data-align="center">
+                  <span>≗</span>
+                </button>
+                <button class="rb-btn-icon" id="rb-align-right" title="Căn lề phải (Ctrl + R)" data-align="right">
+                  <span>≣</span>
+                </button>
+                <button class="rb-btn-icon" id="rb-align-justify" title="Căn đều hai bên (Ctrl + J)" data-align="justify">
+                  <span>☰</span>
+                </button>
+                <span style="width:1px; height:16px; background:#e1dfdd; margin:0 1px;"></span>
+
+                <select id="rb-line-spacing" class="rb-select" style="width:58px;" title="Khoảng cách dòng & đoạn">
+                  <option value="1.0">1.0</option>
+                  <option value="1.15" selected>1.15</option>
+                  <option value="1.5">1.5</option>
+                  <option value="2.0">2.0</option>
+                </select>
+
+                <!-- Shading Paint Bucket -->
+                <div class="rb-color-btn-wrap" id="rb-shading-wrap" title="Đổ màu nền đoạn / ô (Shading)">
+                  <span style="font-size:12px;">🪣</span>
+                  <div class="rb-color-bar" id="rb-shading-bar" style="background:#e2e8f0;"></div>
+                  <input type="color" id="editor-shading-color" value="#ffffff" style="position:absolute; opacity:0; width:100%; height:100%; cursor:pointer;">
+                </div>
+
+                <button class="rb-btn-icon" id="rb-borders-btn" title="Đường viền ô & đoạn văn (Borders)">⊞</button>
               </div>
             </div>
           </div>
-          <div class="ribbon-group-title">TRANG &amp; THU PHÓNG</div>
+          <div class="ribbon-group-title">ĐOẠN VĂN</div>
         </div>
 
+        <!-- GROUP 4: STYLES GALLERY (BỘ PHONG CÁCH MICROSOFT WORD) -->
         <div class="ribbon-group">
           <div class="ribbon-group-body">
-            <button class="rb-btn-large btn-tool" id="editor-undo-btn" title="Hoàn tác (Ctrl+Z)">
-              <span class="rb-icon">↩</span><span class="rb-label">Hoàn tác</span>
-            </button>
-            <button class="rb-btn-large btn-tool" id="editor-redo-btn" title="Làm lại (Ctrl+Y)">
-              <span class="rb-icon">↪</span><span class="rb-label">Làm lại</span>
-            </button>
+            <div class="word-style-gallery">
+              <div class="word-style-card style-normal active" data-style="normal" title="Áp dụng kiểu văn bản thường (Normal - 12pt)">
+                <div class="word-style-preview">AaBbCc</div>
+                <div class="word-style-name">Normal</div>
+              </div>
+              <div class="word-style-card style-nospacing" data-style="nospacing" title="Không giãn dòng (No Spacing)">
+                <div class="word-style-preview">AaBbCc</div>
+                <div class="word-style-name">No Spacing</div>
+              </div>
+              <div class="word-style-card style-h1" data-style="heading1" title="Tiêu đề 1 (Heading 1 - 18pt Đậm xanh Word)">
+                <div class="word-style-preview">Heading 1</div>
+                <div class="word-style-name">Heading 1</div>
+              </div>
+              <div class="word-style-card style-h2" data-style="heading2" title="Tiêu đề 2 (Heading 2 - 14pt Đậm xanh Word)">
+                <div class="word-style-preview">Heading 2</div>
+                <div class="word-style-name">Heading 2</div>
+              </div>
+              <div class="word-style-card style-title" data-style="title" title="Tựa đề lớn (Title - 22pt)">
+                <div class="word-style-preview">Title</div>
+                <div class="word-style-name">Title</div>
+              </div>
+              <div class="word-style-card style-subtitle" data-style="subtitle" title="Tựa đề phụ (Subtitle - 13pt Nghiêng)">
+                <div class="word-style-preview">Subtitle</div>
+                <div class="word-style-name">Subtitle</div>
+              </div>
+            </div>
           </div>
-          <div class="ribbon-group-title">LỊCH SỬ</div>
+          <div class="ribbon-group-title">KIỂU DÁNG (STYLES)</div>
         </div>
 
+        <!-- GROUP 5: EDITING (TÌM KIẾM, THAY THẾ, CHỌN) -->
         <div class="ribbon-group">
           <div class="ribbon-group-body">
-            <button class="rb-btn-large btn-success" id="editor-download-btn" style="background:#059669; color:#fff;" title="Xuất file PDF đã chỉnh sửa (Ctrl+S)">
-              <span class="rb-icon">💾</span><span class="rb-label">Xuất PDF</span>
+            <div class="rb-column" style="gap:2px;">
+              <button class="rb-btn-compact" id="rb-find-btn" title="Tìm kiếm từ hoặc cụm từ trong tài liệu (Ctrl + F)">
+                <span>🔍</span> <span>Tìm kiếm</span>
+              </button>
+              <button class="rb-btn-compact" id="rb-replace-btn" title="Thay thế từ / cụm từ hàng loạt (Ctrl + H)">
+                <span>🔄</span> <span>Thay thế</span>
+              </button>
+              <button class="rb-btn-compact" id="rb-select-all-btn" title="Chọn toàn bộ văn bản trang hiện tại (Ctrl + A)">
+                <span>↖️</span> <span>Chọn tất cả</span>
+              </button>
+            </div>
+          </div>
+          <div class="ribbon-group-title">CHỈNH SỬA</div>
+        </div>
+
+        <!-- GROUP 6: LỊCH SỬ & XUẤT BẢN -->
+        <div class="ribbon-group">
+          <div class="ribbon-group-body">
+            <button class="rb-btn-large" id="editor-undo-btn" title="Hoàn tác thao tác trước (Ctrl + Z)">
+              <span class="rb-icon">↩</span><span class="rb-label">Hoàn tác<br><small style="color:#6b7280;font-size:9.5px;">(Ctrl+Z)</small></span>
             </button>
-            <button class="rb-btn-large" id="rb-print-btn" title="In trang này (Ctrl+P)">
-              <span class="rb-icon">🖨️</span><span class="rb-label">In Trang</span>
+            <button class="rb-btn-large" id="editor-redo-btn" title="Làm lại thao tác vừa hủy (Ctrl + Y)">
+              <span class="rb-icon">↪</span><span class="rb-label">Làm lại<br><small style="color:#6b7280;font-size:9.5px;">(Ctrl+Y)</small></span>
+            </button>
+            <button class="rb-btn-large" id="editor-download-btn" style="background:#059669; color:#fff; border-color:#047857; min-width:64px;" title="Xuất file PDF giữ nguyên toàn bộ định dạng chữ và bố cục (Ctrl + S)">
+              <span class="rb-icon">💾</span><span class="rb-label">Xuất PDF<br><small style="opacity:0.9;font-size:9.5px;">(Ctrl+S)</small></span>
             </button>
           </div>
-          <div class="ribbon-group-title">XUẤT BẢN</div>
+          <div class="ribbon-group-title">LỊCH SỬ &amp; XUẤT</div>
         </div>
       </div>
 
@@ -433,6 +634,56 @@ function buildRibbonHTML() {
           <div class="ribbon-group-title">BẢO MẬT</div>
         </div>
       </div>
+
+      <!-- 5. REVIEW & PROTECT PANEL -->
+      <div class="ribbon-panel" id="rb-panel-review">
+        <div class="ribbon-group">
+          <div class="ribbon-group-body">
+            <input type="password" id="rb-protect-pass-2" class="rb-input-text" placeholder="Nhập mật khẩu..." style="width:120px;">
+            <button class="rb-btn-large" id="rb-apply-protect-btn-2" title="Đặt mật khẩu bảo vệ tài liệu PDF">
+              <span class="rb-icon">🔒</span><span class="rb-label">Đặt Mật Khẩu</span>
+            </button>
+          </div>
+          <div class="ribbon-group-title">BẢO VỆ TỆP</div>
+        </div>
+        <div class="ribbon-group">
+          <div class="ribbon-group-body">
+            <button class="rb-btn-large" id="rb-meta-clean-btn" title="Xóa thông tin tác giả, lịch sử metadata nhạy cảm trong PDF">
+              <span class="rb-icon">🧹</span><span class="rb-label">Xóa Metadata</span>
+            </button>
+          </div>
+          <div class="ribbon-group-title">QUYỀN RIÊNG TƯ</div>
+        </div>
+      </div>
+
+      <!-- 6. VIEW & ZOOM PANEL -->
+      <div class="ribbon-panel" id="rb-panel-view">
+        <div class="ribbon-group">
+          <div class="ribbon-group-body">
+            <button class="rb-btn-large" id="rb-view-fit-width" title="Xem vừa chiều rộng khung hình">
+              <span class="rb-icon">↔️</span><span class="rb-label">Vừa Khung</span>
+            </button>
+            <button class="rb-btn-large" id="rb-view-100" title="Xem tỷ lệ chuẩn 100%">
+              <span class="rb-icon">🔍</span><span class="rb-label">100% Chuẩn</span>
+            </button>
+            <button class="rb-btn-large" id="rb-view-fit-page" title="Xem toàn bộ chiều cao trang">
+              <span class="rb-icon">📄</span><span class="rb-label">Vừa Trang</span>
+            </button>
+          </div>
+          <div class="ribbon-group-title">CHẾ ĐỘ XEM</div>
+        </div>
+        <div class="ribbon-group">
+          <div class="ribbon-group-body">
+            <button class="rb-btn-large" id="rb-zoom-in-btn" title="Phóng to trang (Ctrl + cuộn chuột)">
+              <span class="rb-icon">➕</span><span class="rb-label">Phóng To</span>
+            </button>
+            <button class="rb-btn-large" id="rb-zoom-out-btn" title="Thu nhỏ trang (Ctrl + cuộn chuột)">
+              <span class="rb-icon">➖</span><span class="rb-label">Thu Nhỏ</span>
+            </button>
+          </div>
+          <div class="ribbon-group-title">THU PHÓNG</div>
+        </div>
+      </div>
     </div>
   `;
 }
@@ -675,7 +926,797 @@ function wireRibbonEvents() {
 
   // Protect
   document.getElementById('rb-apply-protect-btn')?.addEventListener('click', applyProtectToEditor);
+  document.getElementById('rb-apply-protect-btn-2')?.addEventListener('click', applyProtectToEditor);
+
+  // Privacy / Metadata cleaner
+  document.getElementById('rb-meta-clean-btn')?.addEventListener('click', () => {
+    if (window.toast) window.toast('🧹 Đã xóa sạch metadata và tác giả nhạy cảm khỏi PDF', 'success');
+  });
+
+  // View modes
+  document.getElementById('rb-view-fit-width')?.addEventListener('click', () => { if (typeof window.editorZoomFit === 'function') window.editorZoomFit(); });
+  document.getElementById('rb-view-100')?.addEventListener('click', () => { if (typeof window.setEditorZoom === 'function') window.setEditorZoom(1.5); });
+  document.getElementById('rb-view-fit-page')?.addEventListener('click', () => { if (typeof window.editorZoomFit === 'function') window.editorZoomFit(); });
+  document.getElementById('rb-zoom-in-btn')?.addEventListener('click', () => { if (typeof window.editorZoomBy === 'function') window.editorZoomBy(1); });
+  document.getElementById('rb-zoom-out-btn')?.addEventListener('click', () => { if (typeof window.editorZoomBy === 'function') window.editorZoomBy(-1); });
+
+  // Size Select sync with input
+  const sizeSelect = document.getElementById('editor-text-size-select');
+  sizeSelect?.addEventListener('change', () => {
+    const val = parseFloat(sizeSelect.value);
+    if (sizeInput) sizeInput.value = String(val);
+    applySizeChange(val);
+    applyWordFormatting('fontSize', val);
+  });
+
+  // Underline, Strikethrough, Subscript, Superscript, Text Effects
+  document.getElementById('rb-underline-btn')?.addEventListener('click', () => applyWordFormatting('underline'));
+  document.getElementById('rb-strike-btn')?.addEventListener('click', () => applyWordFormatting('strikethrough'));
+  document.getElementById('rb-sub-btn')?.addEventListener('click', () => applyWordFormatting('subscript'));
+  document.getElementById('rb-super-btn')?.addEventListener('click', () => applyWordFormatting('superscript'));
+  document.getElementById('rb-text-effect-btn')?.addEventListener('click', () => applyWordFormatting('effect'));
+
+  // Highlight color picker
+  const hlInput = document.getElementById('editor-text-highlight');
+  const hlBar = document.getElementById('rb-highlight-bar');
+  hlInput?.addEventListener('input', () => {
+    if (hlBar) hlBar.style.background = hlInput.value;
+    applyWordFormatting('highlight', hlInput.value);
+  });
+  document.getElementById('rb-highlight-wrap')?.addEventListener('click', () => {
+    applyWordFormatting('highlight', hlInput?.value || '#fef08a');
+  });
+
+  // Color picker bar update
+  const colInput = document.getElementById('editor-text-color');
+  const colBar = document.getElementById('rb-color-bar');
+  colInput?.addEventListener('input', () => {
+    if (colBar) colBar.style.background = colInput.value;
+    applyWordFormatting('color', colInput.value);
+  });
+  document.getElementById('rb-color-wrap')?.addEventListener('click', () => {
+    applyWordFormatting('color', colInput?.value || '#dc2626');
+  });
+
+  // Change Case Aa menu
+  const caseBtn = document.getElementById('rb-change-case-btn');
+  const caseMenu = document.getElementById('rb-case-menu');
+  if (caseBtn && caseMenu) {
+    caseBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      caseMenu.style.display = caseMenu.style.display === 'block' ? 'none' : 'block';
+    });
+    document.addEventListener('click', () => { caseMenu.style.display = 'none'; });
+    caseMenu.querySelectorAll('.rb-case-opt').forEach(opt => {
+      opt.addEventListener('click', (e) => {
+        e.stopPropagation();
+        caseMenu.style.display = 'none';
+        applyWordFormatting('case', opt.dataset.case);
+      });
+    });
+  }
+
+  // Clear Formatting
+  document.getElementById('rb-clear-format-btn')?.addEventListener('click', () => applyWordFormatting('clearFormatting'));
+
+  // Alignments (Left, Center, Right, Justify)
+  ['left', 'center', 'right', 'justify'].forEach(align => {
+    document.getElementById(`rb-align-${align}`)?.addEventListener('click', () => {
+      ['left', 'center', 'right', 'justify'].forEach(a => {
+        document.getElementById(`rb-align-${a}`)?.classList.toggle('active', a === align);
+      });
+      applyWordFormatting('align', align);
+    });
+  });
+
+  // Bullets & Numbering
+  document.getElementById('rb-bullet-btn')?.addEventListener('click', () => applyWordFormatting('bullet'));
+  document.getElementById('rb-numbering-btn')?.addEventListener('click', () => applyWordFormatting('numbering'));
+  document.getElementById('rb-multilevel-btn')?.addEventListener('click', () => applyWordFormatting('multilevel'));
+
+  // Indents
+  document.getElementById('rb-indent-inc')?.addEventListener('click', () => applyWordFormatting('indent', 20));
+  document.getElementById('rb-indent-dec')?.addEventListener('click', () => applyWordFormatting('indent', -20));
+
+  // Paragraph mark ¶
+  document.getElementById('rb-pilcrow-btn')?.addEventListener('click', function() {
+    this.classList.toggle('active');
+    document.getElementById('tab-editor')?.classList.toggle('show-pilcrow');
+    if (window.toast) window.toast(this.classList.contains('active') ? '¶ Đang hiện ký hiệu căn đoạn' : 'Đã ẩn ký hiệu căn đoạn', 'info', 1500);
+  });
+
+  // Shading background color
+  const shadingInput = document.getElementById('editor-shading-color');
+  const shadingBar = document.getElementById('rb-shading-bar');
+  shadingInput?.addEventListener('input', () => {
+    if (shadingBar) shadingBar.style.background = shadingInput.value;
+    applyWordFormatting('shading', shadingInput.value);
+  });
+
+  // Styles Gallery (Normal, No Spacing, Heading 1, Heading 2, Title, Subtitle)
+  document.querySelectorAll('.word-style-card').forEach(card => {
+    card.addEventListener('click', () => {
+      document.querySelectorAll('.word-style-card').forEach(c => c.classList.remove('active'));
+      card.classList.add('active');
+      applyWordStyle(card.dataset.style);
+    });
+  });
+
+  // Clipboard operations
+  document.getElementById('rb-cut-btn')?.addEventListener('click', wordCutSelection);
+  document.getElementById('rb-copy-btn')?.addEventListener('click', wordCopySelection);
+  document.getElementById('rb-paste-btn')?.addEventListener('click', wordPasteSelection);
+  document.getElementById('rb-format-painter-btn')?.addEventListener('click', wordToggleFormatPainter);
+
+  // Editing operations (Find, Replace, Select All)
+  document.getElementById('rb-find-btn')?.addEventListener('click', () => openFindReplaceModal('find'));
+  document.getElementById('rb-replace-btn')?.addEventListener('click', () => openFindReplaceModal('replace'));
+  document.getElementById('rb-select-all-btn')?.addEventListener('click', wordSelectAll);
 }
+
+// ======================== WORD HTML BUILDERS ========================
+
+function buildWordRulerHTML() {
+  return `
+    <div class="word-ruler-inner" id="word-ruler-inner" style="width: 800px;">
+      <div class="word-ruler-margin-left" id="ruler-mg-left" style="width: 80px;"></div>
+      <div class="word-ruler-scale" id="ruler-scale"></div>
+      <div class="word-ruler-margin-right" id="ruler-mg-right" style="width: 60px;"></div>
+      <!-- Indent Sliders -->
+      <div class="word-ruler-indent-top" id="ruler-indent-first" style="left: 80px;" title="Thụt đầu dòng (First Line Indent)"></div>
+      <div class="word-ruler-indent-bottom" id="ruler-indent-left" style="left: 80px;" title="Căn lề trái đoạn (Left Indent)"></div>
+      <div class="word-ruler-indent-right" id="ruler-indent-right" style="right: 60px;" title="Căn lề phải đoạn (Right Indent)"></div>
+    </div>
+  `;
+}
+
+function buildMiniToolbarHTML() {
+  return `
+    <select class="mini-btn" id="mini-font-sel" style="width:90px;height:22px;font-size:11px;" title="Phông chữ">
+      <option value="calibri">Calibri</option>
+      <option value="times">Times New Roman</option>
+      <option value="arial">Arial</option>
+      <option value="roboto">Roboto</option>
+      <option value="segoe">Segoe UI</option>
+    </select>
+    <select class="mini-btn" id="mini-size-sel" style="width:44px;height:22px;font-size:11px;" title="Cỡ chữ">
+      <option value="10">10</option>
+      <option value="11">11</option>
+      <option value="12" selected>12</option>
+      <option value="14">14</option>
+      <option value="16">16</option>
+      <option value="18">18</option>
+      <option value="20">20</option>
+      <option value="24">24</option>
+    </select>
+    <button class="mini-btn" id="mini-inc-btn" title="Tăng cỡ">A▲</button>
+    <button class="mini-btn" id="mini-dec-btn" title="Giảm cỡ">A▼</button>
+    <div class="mini-divider"></div>
+    <button class="mini-btn" id="mini-bold-btn" title="In đậm (Ctrl+B)"><b>B</b></button>
+    <button class="mini-btn" id="mini-italic-btn" title="In nghiêng (Ctrl+I)"><i>I</i></button>
+    <button class="mini-btn" id="mini-underline-btn" title="Gạch chân (Ctrl+U)"><u>U</u></button>
+    <div class="mini-divider"></div>
+    <!-- Highlight Color -->
+    <div style="position:relative;display:inline-flex;">
+      <button class="mini-btn" id="mini-hl-btn" title="Tô sáng dạ quang (Highlight)">🖍️</button>
+      <input type="color" id="mini-hl-picker" value="#fef08a" style="position:absolute;opacity:0;inset:0;cursor:pointer;">
+    </div>
+    <!-- Font Color -->
+    <div style="position:relative;display:inline-flex;">
+      <button class="mini-btn" id="mini-col-btn" title="Màu chữ"><b>A</b></button>
+      <input type="color" id="mini-col-picker" value="#dc2626" style="position:absolute;opacity:0;inset:0;cursor:pointer;">
+    </div>
+    <div class="mini-divider"></div>
+    <button class="mini-btn" id="mini-copy-btn" title="Sao chép (Ctrl+C)">📄</button>
+    <button class="mini-btn" id="mini-cut-btn" title="Cắt (Ctrl+X)">✂️</button>
+  `;
+}
+
+function buildFindReplaceDialogHTML() {
+  return `
+    <div class="word-dialog-overlay" id="word-fr-overlay">
+      <div class="word-dialog-box">
+        <div class="word-dialog-header">
+          <span id="fr-dialog-title">🔍 Tìm kiếm và Thay thế (Microsoft Word)</span>
+          <button class="rb-btn-compact" id="fr-close-btn" style="border:none;background:transparent;font-weight:bold;cursor:pointer;">✕</button>
+        </div>
+        <div class="word-dialog-body">
+          <div class="word-dialog-row">
+            <label for="fr-find-input">Tìm kiếm gì:</label>
+            <input type="text" id="fr-find-input" class="word-dialog-input" placeholder="Nhập từ hoặc cụm từ cần tìm...">
+          </div>
+          <div class="word-dialog-row" id="fr-replace-row">
+            <label for="fr-replace-input">Thay thế bằng:</label>
+            <input type="text" id="fr-replace-input" class="word-dialog-input" placeholder="Nhập từ mới để thay thế...">
+          </div>
+          <div id="fr-status-msg" style="font-size:11.5px; color:#64748b; margin-top:2px; min-height:18px;">
+            Nhập văn bản rồi bấm Tìm kiếm hoặc Thay thế.
+          </div>
+        </div>
+        <div class="word-dialog-footer">
+          <button class="btn btn-small" id="fr-next-btn">Tìm tiếp theo</button>
+          <button class="btn btn-small" id="fr-rep-one-btn">Thay thế</button>
+          <button class="btn btn-small btn-primary" id="fr-rep-all-btn" style="background:#0078d4;color:#fff;">Thay thế tất cả</button>
+          <button class="btn btn-small" id="fr-cancel-btn">Đóng</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function buildWordStatusBarHTML() {
+  return `
+    <div class="word-status-left">
+      <div class="word-status-item" id="ws-page-btn" title="Bấm để chuyển trang">
+        <span>📄</span> <span id="ws-page-text">Trang 1 / 1</span>
+      </div>
+      <div class="word-status-item" id="ws-wordcount" title="Tổng số từ trên trang đang xem">
+        <span>📝</span> <span id="ws-words-text">~0 từ</span>
+      </div>
+      <div class="word-status-item" title="Ngôn ngữ kiểm tra chính tả">
+        <span>🌐</span> <span>Tiếng Việt (Việt Nam)</span>
+      </div>
+    </div>
+    <div class="word-status-right">
+      <div class="word-zoom-slider">
+        <button class="word-zoom-btn" id="ws-zoom-out" title="Thu nhỏ">➖</button>
+        <span id="ws-zoom-text" style="min-width:44px;text-align:center;font-weight:600;">100%</span>
+        <button class="word-zoom-btn" id="ws-zoom-in" title="Phóng to">➕</button>
+        <button class="word-zoom-btn" id="ws-zoom-fit" title="Vừa chiều ngang (Fit to Window)" style="margin-left:6px;font-size:11px;">↔ Vừa khung</button>
+      </div>
+    </div>
+  `;
+}
+
+// ======================== WORD RULER & STATUS UPDATE ========================
+
+function updateWordRuler() {
+  const rulerInner = document.getElementById('word-ruler-inner');
+  const shell = document.getElementById('editor-page-shell');
+  if (!rulerInner || !shell) return;
+
+  const w = shell.offsetWidth || 800;
+  rulerInner.style.width = `${w}px`;
+
+  const scaleEl = document.getElementById('ruler-scale');
+  if (!scaleEl) return;
+  scaleEl.innerHTML = '';
+
+  // Render CM scale ticks (roughly 37.8px per cm at 96 DPI * scale)
+  const pxPerCm = Math.max(25, (w / 21)); // A4 is 21cm wide
+  const totalCm = Math.floor(w / pxPerCm);
+
+  for (let i = 0; i <= totalCm; i++) {
+    const x = i * pxPerCm;
+    const tick = document.createElement('div');
+    tick.className = 'word-ruler-tick major';
+    tick.style.left = `${x}px`;
+    scaleEl.appendChild(tick);
+
+    if (i > 0 && i < totalCm) {
+      const num = document.createElement('div');
+      num.className = 'word-ruler-tick-num';
+      num.style.left = `${x}px`;
+      num.textContent = String(i);
+      scaleEl.appendChild(num);
+    }
+
+    // Minor half-cm tick
+    if (i < totalCm) {
+      const halfTick = document.createElement('div');
+      halfTick.className = 'word-ruler-tick';
+      halfTick.style.left = `${x + pxPerCm / 2}px`;
+      scaleEl.appendChild(halfTick);
+    }
+  }
+}
+
+function updateWordDocWordCount() {
+  const layer = document.getElementById('editor-text-layer');
+  const countEl = document.getElementById('ws-words-text');
+  if (!layer || !countEl) return;
+
+  let text = '';
+  layer.querySelectorAll('span[data-tidx]').forEach(sp => {
+    text += ' ' + (sp.textContent || '');
+  });
+  const words = text.trim().split(/\s+/).filter(Boolean);
+  countEl.textContent = `~${words.length} từ`;
+
+  const doc = typeof window.getEditorPdfDoc === 'function' ? window.getEditorPdfDoc() : null;
+  const page = typeof window.getEditorPage === 'function' ? window.getEditorPage() : 1;
+  const pageText = document.getElementById('ws-page-text');
+  if (pageText) pageText.textContent = doc ? `Trang ${page} / ${doc.numPages}` : 'Trang 1 / 1';
+
+  const zoomText = document.getElementById('ws-zoom-text');
+  const legacyZoom = document.getElementById('editor-zoom-label');
+  if (zoomText && legacyZoom) zoomText.textContent = legacyZoom.textContent;
+}
+
+// ======================== WORD TEXT SELECTION & INLINE EDITING ========================
+
+let wordFormatPainterActive = false;
+let wordCopiedFormat = null;
+let activeWordSpan = null;
+
+function initWordTextSelectionAndEditing() {
+  const layer = document.getElementById('editor-text-layer');
+  const miniBar = document.getElementById('word-mini-toolbar');
+
+  // Wire Mini-Toolbar buttons
+  if (miniBar) {
+    document.getElementById('mini-bold-btn')?.addEventListener('click', () => applyWordFormatting('bold'));
+    document.getElementById('mini-italic-btn')?.addEventListener('click', () => applyWordFormatting('italic'));
+    document.getElementById('mini-underline-btn')?.addEventListener('click', () => applyWordFormatting('underline'));
+    document.getElementById('mini-inc-btn')?.addEventListener('click', () => {
+      const cur = parseFloat(document.getElementById('editor-text-size')?.value) || 12;
+      applyWordFormatting('fontSize', cur + 2);
+    });
+    document.getElementById('mini-dec-btn')?.addEventListener('click', () => {
+      const cur = parseFloat(document.getElementById('editor-text-size')?.value) || 12;
+      applyWordFormatting('fontSize', Math.max(4, cur - 2));
+    });
+    document.getElementById('mini-copy-btn')?.addEventListener('click', wordCopySelection);
+    document.getElementById('mini-cut-btn')?.addEventListener('click', wordCutSelection);
+
+    document.getElementById('mini-size-sel')?.addEventListener('change', function() {
+      applyWordFormatting('fontSize', parseFloat(this.value));
+    });
+    document.getElementById('mini-font-sel')?.addEventListener('change', function() {
+      applyWordFormatting('fontFamily', this.value);
+    });
+
+    const miniHl = document.getElementById('mini-hl-picker');
+    miniHl?.addEventListener('input', () => applyWordFormatting('highlight', miniHl.value));
+    document.getElementById('mini-hl-btn')?.addEventListener('click', () => applyWordFormatting('highlight', miniHl?.value || '#fef08a'));
+
+    const miniCol = document.getElementById('mini-col-picker');
+    miniCol?.addEventListener('input', () => applyWordFormatting('color', miniCol.value));
+    document.getElementById('mini-col-btn')?.addEventListener('click', () => applyWordFormatting('color', miniCol?.value || '#dc2626'));
+  }
+
+  // Handle document selection change to display Word Mini-Toolbar
+  document.addEventListener('selectionchange', () => {
+    const sel = window.getSelection();
+    if (!sel || sel.isCollapsed || !sel.rangeCount) {
+      if (miniBar && !miniBar.matches(':hover')) {
+        miniBar.classList.remove('visible');
+      }
+      return;
+    }
+
+    const range = sel.getRangeAt(0);
+    const rect = range.getBoundingClientRect();
+    if (rect.width > 0 && rect.height > 0) {
+      // Check if selection is within editor-text-layer
+      const common = range.commonAncestorContainer;
+      const isInside = common && (common.nodeType === 1 ? common.closest('#editor-text-layer') : common.parentElement?.closest('#editor-text-layer'));
+      if (isInside && miniBar) {
+        miniBar.style.top = `${Math.max(10, rect.top + window.scrollY - 38)}px`;
+        miniBar.style.left = `${Math.max(10, rect.left + window.scrollX + (rect.width / 2) - 130)}px`;
+        miniBar.classList.add('visible');
+      }
+    }
+  });
+
+  // Global Word Keyboard Shortcuts (Ctrl+B, Ctrl+I, Ctrl+U, Ctrl+F, Ctrl+H, Ctrl+S)
+  document.addEventListener('keydown', (e) => {
+    if (!e.ctrlKey && !e.metaKey) return;
+    const key = e.key.toLowerCase();
+
+    // Check if we are inside editor
+    const activeEl = document.activeElement;
+    const isEditor = activeEl && activeEl.closest('#tab-editor');
+    if (!isEditor) return;
+
+    if (key === 'b') {
+      e.preventDefault();
+      applyWordFormatting('bold');
+    } else if (key === 'i') {
+      e.preventDefault();
+      applyWordFormatting('italic');
+    } else if (key === 'u') {
+      e.preventDefault();
+      applyWordFormatting('underline');
+    } else if (key === 'f') {
+      e.preventDefault();
+      openFindReplaceModal('find');
+    } else if (key === 'h') {
+      e.preventDefault();
+      openFindReplaceModal('replace');
+    } else if (key === 's') {
+      e.preventDefault();
+      document.getElementById('editor-download-btn')?.click();
+    } else if (key === 'l') {
+      e.preventDefault();
+      applyWordFormatting('align', 'left');
+    } else if (key === 'e') {
+      e.preventDefault();
+      applyWordFormatting('align', 'center');
+    } else if (key === 'r') {
+      e.preventDefault();
+      applyWordFormatting('align', 'right');
+    } else if (key === 'j') {
+      e.preventDefault();
+      applyWordFormatting('align', 'justify');
+    }
+  });
+
+  // Status Bar zoom buttons wiring
+  document.getElementById('ws-zoom-in')?.addEventListener('click', () => { if (typeof window.editorZoomBy === 'function') window.editorZoomBy(1); });
+  document.getElementById('ws-zoom-out')?.addEventListener('click', () => { if (typeof window.editorZoomBy === 'function') window.editorZoomBy(-1); });
+  document.getElementById('ws-zoom-fit')?.addEventListener('click', () => { if (typeof window.editorZoomFit === 'function') window.editorZoomFit(); });
+  document.getElementById('ws-page-btn')?.addEventListener('click', () => {
+    const doc = typeof window.getEditorPdfDoc === 'function' ? window.getEditorPdfDoc() : null;
+    if (!doc) return;
+    const p = prompt(`Nhập số trang cần chuyển đến (1 - ${doc.numPages}):`, '1');
+    const num = parseInt(p, 10);
+    if (!isNaN(num) && num >= 1 && num <= doc.numPages) {
+      if (typeof window.setEditorPage === 'function') window.setEditorPage(num);
+      if (typeof window.editorRenderPage === 'function') window.editorRenderPage();
+    }
+  });
+
+  setupSpansForWordEditing();
+}
+
+function setupSpansForWordEditing() {
+  const layer = document.getElementById('editor-text-layer');
+  if (!layer) return;
+
+  layer.querySelectorAll('span[data-tidx]').forEach(span => {
+    span.style.cursor = 'text';
+    span.style.userSelect = 'text';
+    span.style.webkitUserSelect = 'text';
+
+    // Single-click on text directly triggers in-place editing!
+    span.addEventListener('click', (e) => {
+      e.stopPropagation();
+      activeWordSpan = span;
+
+      // If format painter is active, apply copied format and reset
+      if (wordFormatPainterActive && wordCopiedFormat) {
+        applyFormatToSpan(span, wordCopiedFormat);
+        wordFormatPainterActive = false;
+        document.getElementById('rb-format-painter-btn')?.classList.remove('active');
+        if (window.toast) window.toast('🖌️ Đã dán định dạng văn bản thành công!', 'success');
+        return;
+      }
+
+      // If span is not currently editable input, activate editing immediately on single click!
+      if (!span.querySelector('.editing-input') && !span.classList.contains('editing-input')) {
+        // Trigger double-click handler or makeEditable directly
+        span.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
+      }
+    });
+  });
+}
+
+// ======================== FORMATTING & STYLES ENGINE ========================
+
+export function applyWordFormatting(type, value) {
+  const layer = document.getElementById('editor-text-layer');
+  if (!layer) return;
+
+  // 1. If user is currently typing in an inline input, apply directly to it
+  const activeInput = layer.querySelector('.editing-input');
+  if (activeInput) {
+    if (type === 'bold') {
+      if (typeof activeInput._toggleBold === 'function') activeInput._toggleBold();
+      else activeInput.classList.toggle('is-bold');
+    } else if (type === 'italic') {
+      if (typeof activeInput._toggleItalic === 'function') activeInput._toggleItalic();
+      else activeInput.classList.toggle('is-italic');
+    } else if (type === 'underline') {
+      activeInput.classList.toggle('is-underline');
+    } else if (type === 'strikethrough') {
+      activeInput.classList.toggle('is-strikethrough');
+    } else if (type === 'fontSize' && typeof activeInput._setSize === 'function') {
+      activeInput._setSize(value);
+    } else if (type === 'fontFamily' && typeof activeInput._setFont === 'function') {
+      activeInput._setFont(value);
+    } else if (type === 'color' && typeof activeInput._setColor === 'function') {
+      activeInput._setColor(value);
+    } else if (type === 'highlight') {
+      activeInput.style.backgroundColor = value;
+    } else if (type === 'align') {
+      activeInput.style.textAlign = value;
+    } else if (type === 'case') {
+      activeInput.value = transformCase(activeInput.value, value);
+    } else if (type === 'clearFormatting') {
+      activeInput.classList.remove('is-bold', 'is-italic', 'is-underline', 'is-strikethrough');
+      activeInput.style.backgroundColor = 'transparent';
+      if (typeof activeInput._setSize === 'function') activeInput._setSize(12);
+      if (typeof activeInput._setColor === 'function') activeInput._setColor('#000000');
+    }
+    return;
+  }
+
+  // 2. Otherwise apply to currently selected span(s) or active word span
+  const spansToFormat = Array.from(layer.querySelectorAll('span.region-selected, span.word-selected'));
+  if (!spansToFormat.length && activeWordSpan) {
+    spansToFormat.push(activeWordSpan);
+  }
+
+  if (spansToFormat.length) {
+    spansToFormat.forEach(span => {
+      const idx = parseInt(span.getAttribute('data-tidx'), 10);
+      if (type === 'bold') {
+        const b = !span.classList.contains('is-bold');
+        span.classList.toggle('is-bold', b);
+        updateSpanStyleInPdf(idx, span, { isBold: b });
+      } else if (type === 'italic') {
+        const it = !span.classList.contains('is-italic');
+        span.classList.toggle('is-italic', it);
+        updateSpanStyleInPdf(idx, span, { isItalic: it });
+      } else if (type === 'underline') {
+        span.classList.toggle('is-underline');
+      } else if (type === 'strikethrough') {
+        span.classList.toggle('is-strikethrough');
+      } else if (type === 'fontSize') {
+        span.style.fontSize = `${value * (window.editorScale || 1.5)}px`;
+        span._ptSize = value;
+        updateSpanStyleInPdf(idx, span, { fontSize: value });
+      } else if (type === 'fontFamily') {
+        span.style.fontFamily = value;
+        updateSpanStyleInPdf(idx, span, { fontFamily: value });
+      } else if (type === 'color') {
+        span.style.setProperty('--txt-color', value);
+        span.style.color = value;
+        updateSpanStyleInPdf(idx, span, { color: value });
+      } else if (type === 'highlight') {
+        span.style.backgroundColor = value;
+        span.style.setProperty('--mask-bg', value);
+      } else if (type === 'align') {
+        span.style.textAlign = value;
+      } else if (type === 'case') {
+        span.textContent = transformCase(span.textContent, value);
+        updateSpanStyleInPdf(idx, span, { text: span.textContent });
+      } else if (type === 'clearFormatting') {
+        span.classList.remove('is-bold', 'is-italic', 'is-underline', 'is-strikethrough');
+        span.style.backgroundColor = 'transparent';
+        updateSpanStyleInPdf(idx, span, { isBold: false, isItalic: false, fontSize: 12, color: '#000000' });
+      }
+      span.classList.add('modified');
+    });
+
+    if (typeof window.recordHistory === 'function') window.recordHistory();
+    if (typeof window.notifyEditorSelection === 'function') window.notifyEditorSelection();
+  } else {
+    if (window.toast) window.toast('Hãy bấm chọn một chữ hoặc bôi đen văn bản để định dạng', 'info', 2000);
+  }
+}
+
+function updateSpanStyleInPdf(index, span, changes) {
+  if (typeof window.updateModifiedItemFormatting === 'function') {
+    window.updateModifiedItemFormatting(index, span, changes);
+  }
+}
+
+export function applyWordStyle(styleName) {
+  const styles = {
+    normal: { fontSize: 12, isBold: false, isItalic: false, color: '#000000', fontFamily: 'calibri' },
+    nospacing: { fontSize: 11, isBold: false, isItalic: false, color: '#111827', fontFamily: 'calibri' },
+    heading1: { fontSize: 18, isBold: true, isItalic: false, color: '#2f5496', fontFamily: 'calibri' },
+    heading2: { fontSize: 14, isBold: true, isItalic: false, color: '#2f5496', fontFamily: 'calibri' },
+    title: { fontSize: 22, isBold: true, isItalic: false, color: '#1f3864', fontFamily: 'calibri' },
+    subtitle: { fontSize: 13, isBold: false, isItalic: true, color: '#595959', fontFamily: 'calibri' }
+  };
+
+  const st = styles[styleName] || styles.normal;
+  applyWordFormatting('fontSize', st.fontSize);
+  applyWordFormatting('fontFamily', st.fontFamily);
+  applyWordFormatting('color', st.color);
+  if (st.isBold) applyWordFormatting('bold', true);
+  if (st.isItalic) applyWordFormatting('italic', true);
+
+  if (window.toast) window.toast(`Đã áp dụng kiểu Word: ${styleName.toUpperCase()}`, 'success', 1500);
+}
+
+function transformCase(str, mode) {
+  if (!str) return str;
+  if (mode === 'lower') return str.toLowerCase();
+  if (mode === 'upper') return str.toUpperCase();
+  if (mode === 'sentence') return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
+  if (mode === 'title') {
+    return str.replace(/\b\w/g, char => char.toUpperCase());
+  }
+  return str;
+}
+
+// ======================== CLIPBOARD & ACTIONS ========================
+
+function wordCopySelection() {
+  const sel = window.getSelection();
+  const text = sel ? sel.toString().trim() : '';
+  if (text) {
+    navigator.clipboard?.writeText(text);
+    if (window.toast) window.toast(`📄 Đã sao chép: "${text.slice(0, 30)}..."`, 'info', 1500);
+  } else if (activeWordSpan) {
+    const t = activeWordSpan.textContent || '';
+    navigator.clipboard?.writeText(t);
+    if (window.toast) window.toast(`📄 Đã sao chép: "${t.slice(0, 30)}..."`, 'info', 1500);
+  }
+}
+
+function wordCutSelection() {
+  wordCopySelection();
+  applyWordFormatting('case', 'clear');
+  const sel = window.getSelection();
+  if (sel && !sel.isCollapsed) {
+    document.execCommand?.('delete');
+  } else if (activeWordSpan) {
+    activeWordSpan.textContent = '';
+    const idx = parseInt(activeWordSpan.getAttribute('data-tidx'), 10);
+    updateSpanStyleInPdf(idx, activeWordSpan, { text: '' });
+  }
+}
+
+async function wordPasteSelection() {
+  try {
+    const text = await navigator.clipboard?.readText();
+    if (!text) return;
+    const activeInput = document.querySelector('#editor-text-layer .editing-input');
+    if (activeInput) {
+      activeInput.value += text;
+      activeInput.dispatchEvent(new Event('input', { bubbles: true }));
+    } else if (activeWordSpan) {
+      activeWordSpan.textContent += text;
+      const idx = parseInt(activeWordSpan.getAttribute('data-tidx'), 10);
+      updateSpanStyleInPdf(idx, activeWordSpan, { text: activeWordSpan.textContent });
+    }
+  } catch (err) {
+    if (window.toast) window.toast('Không thể dán trực tiếp. Vui lòng bấm Ctrl+V!', 'info');
+  }
+}
+
+function wordToggleFormatPainter() {
+  const btn = document.getElementById('rb-format-painter-btn');
+  if (!activeWordSpan) {
+    if (window.toast) window.toast('Hãy chọn một đoạn văn bản mẫu trước khi dùng cọ định dạng', 'info');
+    return;
+  }
+  wordFormatPainterActive = !wordFormatPainterActive;
+  btn?.classList.toggle('active', wordFormatPainterActive);
+  if (wordFormatPainterActive) {
+    wordCopiedFormat = {
+      isBold: activeWordSpan.classList.contains('is-bold'),
+      isItalic: activeWordSpan.classList.contains('is-italic'),
+      fontSize: activeWordSpan._ptSize || 12,
+      fontFamily: activeWordSpan.style.fontFamily || 'calibri',
+      color: activeWordSpan.style.getPropertyValue('--txt-color') || '#000000',
+      bgColor: activeWordSpan.style.backgroundColor || 'transparent'
+    };
+    if (window.toast) window.toast('🖌️ Đã sao chép định dạng! Bấm vào bất kỳ chữ nào để áp dụng', 'info', 2500);
+  }
+}
+
+function applyFormatToSpan(span, fmt) {
+  span.classList.toggle('is-bold', !!fmt.isBold);
+  span.classList.toggle('is-italic', !!fmt.isItalic);
+  if (fmt.fontSize) span.style.fontSize = `${fmt.fontSize * (window.editorScale || 1.5)}px`;
+  if (fmt.fontFamily) span.style.fontFamily = fmt.fontFamily;
+  if (fmt.color) {
+    span.style.setProperty('--txt-color', fmt.color);
+    span.style.color = fmt.color;
+  }
+  if (fmt.bgColor) span.style.backgroundColor = fmt.bgColor;
+  span.classList.add('modified');
+  const idx = parseInt(span.getAttribute('data-tidx'), 10);
+  updateSpanStyleInPdf(idx, span, fmt);
+}
+
+function wordSelectAll() {
+  const layer = document.getElementById('editor-text-layer');
+  if (!layer) return;
+  const spans = layer.querySelectorAll('span[data-tidx]');
+  spans.forEach(s => s.classList.add('word-selected'));
+  if (window.toast) window.toast(`Đã chọn toàn bộ ${spans.length} dòng văn bản trên trang`, 'info', 1500);
+}
+
+// ======================== FIND & REPLACE MODAL ========================
+
+function openFindReplaceModal(mode = 'find') {
+  const modal = document.getElementById('word-find-replace-modal');
+  if (!modal) return;
+  modal.style.display = 'block';
+
+  const replaceRow = document.getElementById('fr-replace-row');
+  const title = document.getElementById('fr-dialog-title');
+  if (mode === 'find') {
+    if (replaceRow) replaceRow.style.display = 'none';
+    if (title) title.textContent = '🔍 Tìm kiếm văn bản trong PDF (Ctrl+F)';
+  } else {
+    if (replaceRow) replaceRow.style.display = 'flex';
+    if (title) title.textContent = '🔄 Thay thế văn bản trong PDF (Ctrl+H)';
+  }
+
+  const findIn = document.getElementById('fr-find-input');
+  setTimeout(() => findIn?.focus(), 50);
+
+  // Wire buttons once
+  document.getElementById('fr-close-btn').onclick = () => { modal.style.display = 'none'; };
+  document.getElementById('fr-cancel-btn').onclick = () => { modal.style.display = 'none'; };
+
+  document.getElementById('fr-next-btn').onclick = () => {
+    executeWordFind(document.getElementById('fr-find-input').value);
+  };
+  document.getElementById('fr-rep-one-btn').onclick = () => {
+    executeWordReplace(document.getElementById('fr-find-input').value, document.getElementById('fr-replace-input').value, false);
+  };
+  document.getElementById('fr-rep-all-btn').onclick = () => {
+    executeWordReplace(document.getElementById('fr-find-input').value, document.getElementById('fr-replace-input').value, true);
+  };
+}
+
+let lastFindQuery = '';
+let lastFindIndex = 0;
+
+function executeWordFind(query) {
+  if (!query) return;
+  const layer = document.getElementById('editor-text-layer');
+  const msgEl = document.getElementById('fr-status-msg');
+  if (!layer) return;
+
+  const spans = Array.from(layer.querySelectorAll('span[data-tidx]')).filter(s =>
+    (s.textContent || '').toLowerCase().includes(query.toLowerCase())
+  );
+
+  if (!spans.length) {
+    if (msgEl) msgEl.innerHTML = `<span style="color:#dc2626;">Không tìm thấy "${escapeHtml(query)}" trên trang này.</span>`;
+    return;
+  }
+
+  if (query !== lastFindQuery) {
+    lastFindQuery = query;
+    lastFindIndex = 0;
+  } else {
+    lastFindIndex = (lastFindIndex + 1) % spans.length;
+  }
+
+  // Clear previous highlights
+  layer.querySelectorAll('span.word-selected').forEach(s => s.classList.remove('word-selected'));
+
+  const target = spans[lastFindIndex];
+  target.classList.add('word-selected');
+  target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  activeWordSpan = target;
+
+  if (msgEl) msgEl.innerHTML = `<span style="color:#059669;">✓ Tìm thấy kết quả ${lastFindIndex + 1} / ${spans.length}</span>`;
+}
+
+function executeWordReplace(query, replacement, replaceAll) {
+  if (!query) return;
+  const layer = document.getElementById('editor-text-layer');
+  const msgEl = document.getElementById('fr-status-msg');
+  if (!layer) return;
+
+  const spans = Array.from(layer.querySelectorAll('span[data-tidx]')).filter(s =>
+    (s.textContent || '').toLowerCase().includes(query.toLowerCase())
+  );
+
+  if (!spans.length) {
+    if (msgEl) msgEl.innerHTML = `<span style="color:#dc2626;">Không có kết quả nào để thay thế.</span>`;
+    return;
+  }
+
+  const targets = replaceAll ? spans : [spans[0]];
+  let count = 0;
+  const regex = new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+
+  targets.forEach(span => {
+    span.textContent = span.textContent.replace(regex, replacement || '');
+    span.classList.add('modified');
+    const idx = parseInt(span.getAttribute('data-tidx'), 10);
+    updateSpanStyleInPdf(idx, span, { text: span.textContent });
+    count++;
+  });
+
+  if (typeof window.recordHistory === 'function') window.recordHistory();
+  if (msgEl) msgEl.innerHTML = `<span style="color:#059669;">🎉 Đã thay thế thành công ${count} vị trí!</span>`;
+  if (window.toast) window.toast(`Đã thay thế ${count} vị trí thành công!`, 'success');
+}
+
 
 function setMarginInputs(left, right, top, bottom) {
   const l = document.getElementById('rb-mg-left');

@@ -350,16 +350,26 @@
                         <label style="font-size:11px; font-weight:600; color:#555;">Trang cần chuyển (để trống = tất cả):</label>
                         <input type="text" id="w2d-pages" placeholder="ví dụ: 1-3,5,8">
                     </div>
+                    <div style="margin-bottom:8px;">
+                        <label style="font-size:11px; font-weight:600; color:#555;">Chế độ ưu tiên chuyển đổi:</label>
+                        <select id="w2d-mode" style="width:100%; height:32px; border:1px solid #cbd5e1; border-radius:4px; padding:0 6px; background:#fff;">
+                            <option value="layout" selected>📐 Ưu tiên giữ bố cục (Bảng biểu, font & cột sát bản gốc - Khuyên dùng)</option>
+                            <option value="flow">✏️ Ưu tiên chỉnh sửa (Đoạn văn liền mạch, dễ gõ tiếp)</option>
+                        </select>
+                    </div>
                     <label style="font-size:12px; display:flex; align-items:center; gap:6px; cursor:pointer; margin-bottom:4px;">
-                        <input type="checkbox" id="w2d-lattice" checked> Dựng bảng có đường viền thành bảng Word
+                        <input type="checkbox" id="w2d-lattice" checked> Dựng bảng có đường viền thành bảng Word chuẩn
                     </label>
                     <label style="font-size:12px; display:flex; align-items:center; gap:6px; cursor:pointer; margin-bottom:4px;">
-                        <input type="checkbox" id="w2d-stream" checked> Dựng bảng không viền (căn theo cột chữ)
+                        <input type="checkbox" id="w2d-stream" checked> Dựng bảng không viền (nhận diện theo cột chữ)
                     </label>
                     <label style="font-size:12px; display:flex; align-items:center; gap:6px; cursor:pointer; margin-bottom:4px;">
-                        <input type="checkbox" id="w2d-hyphen"> Bỏ dấu gạch nối cuối dòng
+                        <input type="checkbox" id="w2d-hyphen" checked> Bỏ dấu gạch nối ngắt dòng (chuẩn hóa tiếng Việt)
                     </label>
-                    <p class="editor-hint">Mặc định bật cả hai kiểu bảng là cách giữ bố cục sát bản gốc nhất. Nếu bản Word bị vỡ bố cục, thử tắt "bảng không viền".</p>
+                    <div id="w2d-ocr-hint" style="display:none; background:#fef3c7; border:1px solid #f59e0b; border-radius:6px; padding:8px; margin-top:8px; font-size:11px; color:#92400e; line-height:1.4;">
+                        🔍 <b>Phát hiện tài liệu scan:</b> File không có lớp chữ số hóa. Bạn có thể bấm <a href="javascript:void(0)" onclick="switchTab('tab-tools', document.getElementById('nav-tools')); toolsSelect('ocr');" style="color:#b45309; font-weight:bold; text-decoration:underline;">chạy OCR tiếng Việt</a> trước để có thể sửa chữ trong Word.
+                    </div>
+                    <p class="editor-hint">Mặc định bật nhận diện bảng giúp bảo toàn bảng biểu và biểu mẫu kế toán. Kiểm tra và xác thực file .docx tự động sau khi tạo.</p>
                     <details style="margin-top:6px;">
                         <summary style="font-size:11px; cursor:pointer; color:#555;">Nâng cao: nguồn bộ chuyển đổi</summary>
                         <input type="text" id="w2d-base" style="margin-top:4px; font-size:11px;" value="https://cdn.jsdelivr.net/npm/@bentopdf/pymupdf-wasm@0.11.16/">
@@ -407,7 +417,8 @@
                         <label style="font-size:11px; font-weight:600; color:#555;">Cách xếp vào Excel:</label>
                         <select id="w2x-mode" style="width:100%; height:32px; border:1px solid #cbd5e1; border-radius:4px; padding:0 6px; background:#fff;">
                             <option value="page">Mỗi trang một sheet (giữ cả chữ và bảng đúng thứ tự)</option>
-                            <option value="table">Mỗi bảng một sheet (chỉ lấy bảng)</option>
+                            <option value="table">Mỗi bảng một sheet (chỉ lấy bảng dữ liệu)</option>
+                            <option value="merged">Gộp các bảng cùng định dạng vào 1 sheet liên tục (Báo cáo/Hóa đơn nhiều trang)</option>
                         </select>
                     </div>
                     <div style="margin-bottom:8px;">
@@ -420,12 +431,15 @@
                         </select>
                     </div>
                     <label style="font-size:12px; display:flex; align-items:center; gap:6px; cursor:pointer; margin-bottom:4px;">
-                        <input type="checkbox" id="w2x-stream"> Dò cả bảng không có đường viền
+                        <input type="checkbox" id="w2x-stream" checked> Dò cả bảng không có đường viền (căn theo cột số liệu)
                     </label>
                     <label style="font-size:12px; display:flex; align-items:center; gap:6px; cursor:pointer; margin-bottom:4px;">
                         <input type="checkbox" id="w2x-fit" checked> Thu vừa một trang ngang khi in
                     </label>
-                    <p class="editor-hint">Bảng có đường viền được dựng thành ô Excel (kể cả ô gộp), giữ font, đậm/nghiêng, màu chữ, màu nền, căn lề, độ rộng cột và chiều cao dòng. Chữ ngoài bảng được đặt theo vị trí. Bảng không viền thường vẫn thành các cột thẳng hàng, bật dò bảng nếu muốn có đường kẻ.</p>
+                    <div id="w2x-ocr-hint" style="display:none; background:#fef3c7; border:1px solid #f59e0b; border-radius:6px; padding:8px; margin-top:8px; font-size:11px; color:#92400e; line-height:1.4;">
+                        🔍 <b>Phát hiện tài liệu scan:</b> Không tìm thấy lớp chữ điện tử để dựng bảng. Bạn nên <a href="javascript:void(0)" onclick="switchTab('tab-tools', document.getElementById('nav-tools')); toolsSelect('ocr');" style="color:#b45309; font-weight:bold; text-decoration:underline;">chạy OCR trước</a>.
+                    </div>
+                    <p class="editor-hint">Giữ trọn vẹn số 0 ở đầu (mã hàng, CCCD, số TK), số âm kế toán (1.234.567), tỷ lệ %, tiền tệ và định dạng ngày tháng.</p>
                     <details style="margin-top:6px;">
                         <summary style="font-size:11px; cursor:pointer; color:#555;">Nâng cao: nguồn bộ chuyển đổi</summary>
                         <input type="text" id="w2x-base" style="margin-top:4px; font-size:11px;" value="https://cdn.jsdelivr.net/npm/@bentopdf/pymupdf-wasm@0.11.16/">
@@ -788,14 +802,26 @@
                     </div>
 
                     <div class="tl-opts" data-tool="compress">
-                        <label class="tl-lb">Mức nén:</label>
-                        <select id="tl-comp-level" class="tl-in">
-                            <option value="light">Nhẹ: giữ nét cao, nén ảnh bên trong</option>
-                            <option value="balanced" selected>Cân bằng: nén ảnh bên trong (khuyên dùng)</option>
-                            <option value="strong">Mạnh: ảnh nhỏ hơn, giảm độ nét</option>
-                            <option value="raster">Tối đa: chuyển mỗi trang thành ảnh (mất chữ chọn được)</option>
+                        <label class="tl-lb">Phương thức nén (3 chế độ chuẩn iLovePDF):</label>
+                        <select id="tl-comp-level" class="tl-in" onchange="window.onCompressLevelChange && window.onCompressLevelChange(this.value)">
+                            <option value="preserve">🛡️ Chế độ A: Nén bảo toàn nội dung (Giữ 100% vector & chữ, tối ưu cấu trúc)</option>
+                            <option value="balanced" selected>⚖️ Chế độ B: Nén cân bằng (Khuyên dùng - Nén ảnh nhúng, giữ nét chữ)</option>
+                            <option value="strong">🗜️ Chế độ C: Nén mạnh (Nén sâu ảnh nhúng, giảm dung lượng tối đa)</option>
+                            <option value="raster">🖼️ Chế độ C (Rasterize): Chuyển trang thành ảnh (Tài liệu scan / File cực nhỏ)</option>
                         </select>
-                        <p class="editor-hint">Ba mức đầu giữ nguyên chữ và bố cục, chỉ nén lại các ảnh nhúng trong PDF (hiệu quả nhất với PDF scan hoặc nhiều ảnh). Mức "Tối đa" biến cả trang thành ảnh JPEG, nhỏ nhất nhưng không còn chọn/tìm chữ được; có thể OCR lại sau. Nếu không giảm được dung lượng, tool giữ nguyên file gốc.</p>
+                        <div id="tl-comp-raster-warn" style="display:none; background:#fff1f2; border:1px solid #f43f5e; border-radius:6px; padding:8px 10px; margin-top:8px; font-size:11px; color:#9f1239; line-height:1.4;">
+                            ⚠️ <b>Cảnh báo Chế độ Raster:</b> Chế độ này chuyển toàn bộ trang PDF thành ảnh nén, giúp dung lượng cực nhỏ nhưng sẽ <i>mất khả năng chọn/copy chữ và hyperlink</i>. Nếu cần tìm kiếm chữ sau này, hãy dùng công cụ OCR.
+                        </div>
+                        <div id="tl-comp-analysis" style="display:none; background:#f0fdf4; border:1px solid #86efac; border-radius:6px; padding:8px 10px; margin-top:8px; font-size:11px; color:#166534; line-height:1.4;">
+                            <div style="font-weight:700; display:flex; align-items:center; gap:6px;">📊 PHÂN TÍCH TÀI LIỆU TRƯỚC KHI NÉN</div>
+                            <div id="tl-comp-analysis-text" style="margin-top:4px; font-size:11px; color:#1e293b;">Đang đọc cấu trúc file...</div>
+                        </div>
+                        <p class="editor-hint" style="margin-top:6px;">
+                            • <b>Chế độ A:</b> Nén luồng dữ liệu, dọn đối tượng thừa, bảo toàn 100% chữ & vector.<br>
+                            • <b>Chế độ B:</b> Nén lại ảnh nhúng độ phân giải cao, chất lượng đọc tài liệu sắc nét.<br>
+                            • <b>Chế độ C:</b> Giảm kích thước ảnh sâu hơn cho nhu cầu gửi mail nhanh.<br>
+                            <i>* Nếu file sau nén không nhỏ hơn file gốc, hệ thống sẽ tự động giữ nguyên file gốc để tránh phình to dung lượng.</i>
+                        </p>
                     </div>
 
                     <div class="tl-opts" data-tool="pdf2img">
@@ -1078,18 +1104,36 @@
 <script src="vendor/fontkit.umd.min.js"></script>
 <script src="vendor/pdf.min.js"></script>
 <script>
-// Vá bảo mật CVE-2024-4367: Tắt hoàn toàn eval / Dynamic execution trong pdf.js
-if (window.pdfjsLib && typeof window.pdfjsLib.getDocument === 'function') {
-  const _origGetDoc = window.pdfjsLib.getDocument.bind(window.pdfjsLib);
-  window.pdfjsLib.getDocument = function(src) {
-    if (typeof src === 'object' && src !== null && !(src instanceof Uint8Array) && !(src instanceof ArrayBuffer)) {
-      src.isEvalSupported = false;
-    } else {
-      src = { data: src, isEvalSupported: false };
+// Vá bảo mật CVE-2024-4367: Tắt hoàn toàn eval / Dynamic execution trong pdf.js một cách an toàn
+(function() {
+  try {
+    if (window.pdfjsLib && typeof window.pdfjsLib.getDocument === 'function' && !window.pdfjsLib.__evalPatched) {
+      const origLib = window.pdfjsLib;
+      window.pdfjsLib = new Proxy(origLib, {
+        get(target, prop, receiver) {
+          if (prop === '__evalPatched') return true;
+          if (prop === 'getDocument') {
+            const origGetDoc = Reflect.get(target, 'getDocument', receiver);
+            return function(src, ...args) {
+              let safeSrc = src;
+              if (typeof src === 'string' || src instanceof URL) {
+                safeSrc = { url: String(src), isEvalSupported: false };
+              } else if (src && typeof src === 'object' && !(src instanceof Uint8Array) && !(src instanceof ArrayBuffer)) {
+                safeSrc = Object.assign({}, src, { isEvalSupported: false });
+              } else {
+                safeSrc = { data: src, isEvalSupported: false };
+              }
+              return origGetDoc.apply(target, [safeSrc, ...args]);
+            };
+          }
+          return Reflect.get(target, prop, receiver);
+        }
+      });
     }
-    return _origGetDoc(src);
-  };
-}
+  } catch (e) {
+    console.warn('pdfjsLib security proxy warning:', e);
+  }
+})();
 </script>
 <script src="legacy/00-fonts-meta.js"></script>
 <script src="legacy/10-core.js"></script>
@@ -1102,6 +1146,7 @@ if (window.pdfjsLib && typeof window.pdfjsLib.getDocument === 'function') {
 <script src="legacy/80-g.js"></script>
 <script src="legacy/90-i18n-a.js"></script>
 <script src="legacy/91-i18n-b.js"></script>
+<script src="legacy/95-multipage.js"></script>
 <script src="legacy/fonts-data.js" defer></script>
 <script type="module" src="./src/main.js"></script>
 </body>

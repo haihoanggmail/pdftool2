@@ -3446,7 +3446,7 @@ function editorRedo() {
 }
 
 // ===================== Phóng to / thu nhỏ =====================
-const ZOOM_STEPS = [ 30, 50, 75, 100, 125, 150, 200, 250 ];
+const ZOOM_STEPS = [ 10, 15, 20, 25, 30, 40, 50, 60, 75, 100, 125, 150, 200, 250 ];
 const ZOOM_BASE = 1.5;
 
 function updateZoomLabel() {
@@ -3456,7 +3456,7 @@ function updateZoomLabel() {
 
 async function setEditorZoom(newScale) {
     if (!editorPdfJsDoc) return;
-    newScale = Math.min(ZOOM_BASE * 2.5, Math.max(ZOOM_BASE * 0.3, Math.round(newScale * 1000) / 1000));
+    newScale = Math.min(ZOOM_BASE * 2.5, Math.max(ZOOM_BASE * 0.1, Math.round(newScale * 1000) / 1000));
     if (Math.abs(newScale - editorScale) < 0.001) return;
     const old = editorScale;
     editorShapes.forEach(sh => rescaleShape(sh, old, newScale));

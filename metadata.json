@@ -1,6 +1,6 @@
 {
-  "name": "PDF Tool - Hachihi",
-  "description": "Công cụ PDF trực tuyến: xoay, sắp xếp, gộp file, so sánh, chỉnh sửa, chuyển đổi Word/Excel/Ảnh, OCR và bảo mật PDF hoàn toàn trên trình duyệt.",
+  "name": "Remix Remix pdftool2 1510260900",
+  "description": "Imported from GitHub",
   "permissions": [],
   "capabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"

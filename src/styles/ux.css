@@ -15,3 +15,40 @@
 #shortcut-help.on{display:flex}
 .sh-card{background:var(--bg-card,#fff);color:inherit;padding:20px 26px;border-radius:12px;max-width:440px;line-height:1.9}
 kbd{background:#eee;color:#222;border:1px solid #bbb;border-radius:4px;padding:1px 6px;font-size:12px}
+
+/* ===== Xem nhiều trang liên tục (giống Word) – tab Chỉnh sửa PDF ===== */
+.editor-stage-scroll.mp-on { display: block; text-align: left; }
+#mp-grid {
+  display: grid;
+  grid-template-columns: max-content;
+  justify-content: center;
+  justify-items: center;
+  align-items: start;
+  width: max-content;
+  min-width: 100%;
+  margin: 0 auto;
+}
+#mp-grid .mp-slot {
+  position: relative;
+  background: #fff;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, .18), 0 0 0 1px rgba(0, 0, 0, .05);
+  line-height: 0;
+  flex: none;
+}
+#mp-grid .mp-slot::after {
+  content: attr(data-p);
+  position: absolute; left: 0; right: 0; bottom: -22px;
+  text-align: center; font: 12px/1 system-ui, sans-serif; color: #605e5c;
+  pointer-events: none;
+}
+#mp-grid .mp-slot:not(.mp-active) { cursor: pointer; }
+#mp-grid .mp-slot:not(.mp-active):hover { outline: 2px solid rgba(0, 120, 212, .45); }
+#mp-grid .mp-slot.mp-active { outline: 2px solid #0078d4; box-shadow: 0 4px 18px rgba(0, 0, 0, .22); }
+#mp-grid .mp-slot.mp-active::after { color: #0078d4; font-weight: 700; }
+#mp-grid .mp-slot canvas.mp-prev { display: block; }
+#mp-grid .mp-slot .editor-container-shell { box-shadow: none; border-radius: 0; margin: 0; }
+
+/* Khung trang phải tự cuộn bên trong (không bị tràn/cắt bởi khung cha) */
+#tab-editor .editor-layout { min-height: 0; }
+#tab-editor .editor-main { min-height: 0; min-width: 0; }
+#tab-editor .editor-stage-scroll { min-height: 0; }

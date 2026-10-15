@@ -204,7 +204,11 @@ self.onmessage = async (ev) => {
                     const tc = await (await pdf.getPage(p)).getTextContent();
                     tc.items.forEach(x => { chars += (x.str || '').trim().length; });
                 }
-                if (!chars) it.warn = 'PDF này có vẻ là bản scan (không có chữ thật). Chữ sẽ được giữ dưới dạng ảnh, không sửa được trong Word. Hãy chạy Chuyển đổi → OCR trước để có chữ thật.';
+                if (!chars) {
+                    it.warn = 'PDF này là bản scan (không có lớp chữ). Chữ sẽ ở dạng hình ảnh. Hãy chạy Chuyển đổi → OCR trước nếu muốn chữ có thể chỉnh sửa.';
+                    const ocrHint = $('w2d-ocr-hint');
+                    if (ocrHint) ocrHint.style.display = 'block';
+                }
             } catch (e) {
                 it.warn = 'Không đọc được thông tin file (có thể bị đặt mật khẩu).';
             }
@@ -232,9 +236,9 @@ self.onmessage = async (ev) => {
                 const opts = {
                     pages: pages,
                     settings: {
-                        parse_lattice_table: $('w2d-lattice').checked,
-                        parse_stream_table: $('w2d-stream').checked,
-                        delete_end_line_hyphen: $('w2d-hyphen').checked,
+                        parse_lattice_table: $('w2d-lattice') ? $('w2d-lattice').checked : true,
+                        parse_stream_table: $('w2d-stream') ? $('w2d-stream').checked : true,
+                        delete_end_line_hyphen: $('w2d-hyphen') ? $('w2d-hyphen').checked : true,
                         ignore_page_error: true,
                         multi_processing: false
                     }
@@ -257,12 +261,19 @@ self.onmessage = async (ev) => {
                 if (it.blob) continue;
                 it.status = 'run'; it.text = 'Đang chuyển đổi...';
                 render();
+                const t0 = performance.now();
                 setProgress(0, 'Đang chuyển ' + it.file.name + ' (' + (i + 1) + '/' + items.length + ')...');
                 try {
                     const res = await convertOne(it);
-                    it.blob = new Blob([res.bytes], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+                    const u8 = new Uint8Array(res.bytes);
+                    if (u8.length < 2048 || u8[0] !== 0x50 || u8[1] !== 0x4B) {
+                        throw new Error('Kết quả chuyển đổi không phải tệp DOCX hợp lệ hoặc bị rỗng (' + u8.length + ' bytes).');
+                    }
+                    it.blob = new Blob([u8], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
                     it.name = it.file.name.replace(/\.pdf$/i, '') + '.docx';
-                    it.status = 'ok'; it.text = 'Xong • ' + fmtBytes(it.blob.size) + (res.note ? ' • ' + res.note : '');
+                    const duration = ((performance.now() - t0) / 1000).toFixed(1);
+                    it.status = 'ok';
+                    it.text = 'Hoàn tất • ' + fmtBytes(it.blob.size) + ' • ' + duration + 's • Đã xác thực DOCX' + (res.note ? ' • ' + res.note : '');
                     ok++;
                     if (typeof logAction === 'function') logAction('pdf_to_word');
                     if (items.length === 1) w2dDownload(it);
@@ -308,7 +319,7 @@ self.onmessage = async (ev) => {
         inp.addEventListener('change', () => { addFiles(inp.files); inp.value = ''; });
         $('w2d-run-btn').addEventListener('click', run);
         $('w2d-zip-btn').addEventListener('click', zipAll);
-        $('w2d-clear-btn').addEventListener('click', () => { items = []; $('w2d-progress-wrap').style.display = 'none'; render(); });
+        $('w2d-clear-btn').addEventListener('click', () => { items = []; $('w2d-progress-wrap').style.display = 'none'; if ($('w2d-ocr-hint')) $('w2d-ocr-hint').style.display = 'none'; render(); });
         const drop = $('w2d-drop');
         drop.addEventListener('dragover', e => { e.preventDefault(); drop.style.outline = '2px dashed var(--primary)'; });
         drop.addEventListener('dragleave', () => { drop.style.outline = ''; });

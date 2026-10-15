@@ -7,20 +7,35 @@ import { initRedact } from './features/redact.js';
 import { initEditorWordRibbon } from './features/editorWordRibbon.js';
 import { initAuth } from './features/auth.js';
 
-// Bảo mật: vá lỗ hổng CVE-2024-4367 trong pdfjs-dist bằng cách tắt hoàn toàn eval
+// Bảo mật: vá lỗ hổng CVE-2024-4367 trong pdfjs-dist bằng cách tắt hoàn toàn eval một cách an toàn
 (function patchPdfJsEvalSecurity() {
   function applyPatch() {
-    if (window.pdfjsLib && window.pdfjsLib.getDocument && !window.pdfjsLib.__evalPatched) {
-      const originalGetDocument = window.pdfjsLib.getDocument;
-      window.pdfjsLib.getDocument = function (src) {
-        if (typeof src === 'string' || src instanceof URL) {
-          src = { url: String(src), isEvalSupported: false };
-        } else if (src && typeof src === 'object') {
-          if (src.isEvalSupported === undefined) src.isEvalSupported = false;
-        }
-        return originalGetDocument.apply(this, arguments);
-      };
-      window.pdfjsLib.__evalPatched = true;
+    try {
+      if (window.pdfjsLib && typeof window.pdfjsLib.getDocument === 'function' && !window.pdfjsLib.__evalPatched) {
+        const origLib = window.pdfjsLib;
+        window.pdfjsLib = new Proxy(origLib, {
+          get(target, prop, receiver) {
+            if (prop === '__evalPatched') return true;
+            if (prop === 'getDocument') {
+              const origGetDoc = Reflect.get(target, 'getDocument', receiver);
+              return function (src, ...args) {
+                let safeSrc = src;
+                if (typeof src === 'string' || src instanceof URL) {
+                  safeSrc = { url: String(src), isEvalSupported: false };
+                } else if (src && typeof src === 'object' && !(src instanceof Uint8Array) && !(src instanceof ArrayBuffer)) {
+                  safeSrc = Object.assign({}, src, { isEvalSupported: false });
+                } else {
+                  safeSrc = { data: src, isEvalSupported: false };
+                }
+                return origGetDoc.apply(target, [safeSrc, ...args]);
+              };
+            }
+            return Reflect.get(target, prop, receiver);
+          }
+        });
+      }
+    } catch (e) {
+      console.warn('pdfjs security patch proxy notice:', e);
     }
   }
   applyPatch();

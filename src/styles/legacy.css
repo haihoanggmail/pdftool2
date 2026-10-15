@@ -179,9 +179,10 @@
             color: transparent;
             position: absolute;
             white-space: pre;
-            cursor: move;
+            cursor: text;
             transform-origin: 0% 0%;
-            user-select: none;
+            user-select: text;
+            -webkit-user-select: text;
             box-sizing: border-box;
             z-index: 3;
             pointer-events: auto;

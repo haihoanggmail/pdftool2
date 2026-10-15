@@ -113,30 +113,28 @@ export function openLoginModal() {
   modal.innerHTML = `
     <div class="auth-modal-dialog">
       <div class="auth-modal-header">
-        <h3>👤 Hồ Sơ Người Dùng</h3>
+        <h3>👤 Hồ Sơ Người Dùng (Cục Bộ)</h3>
         <button class="auth-modal-close" id="auth-close-btn">&times;</button>
       </div>
       <div class="auth-modal-body">
         <p style="font-size:13px; color:#475569; margin:0 0 16px 0; line-height:1.4;">
-          Bạn có thể nhập tên và email hiển thị để lưu chữ ký và các thiết lập cá nhân trên trình duyệt. Mọi tính năng xử lý PDF đều hoàn toàn miễn phí.
+          Lưu họ tên và email hiển thị trên trình duyệt này để tự động điền khi ký tên số và đóng dấu tài liệu. Dữ liệu được lưu trữ an toàn trong máy của bạn (100% riêng tư).
         </p>
 
         <form id="auth-login-form">
           <div class="auth-form-group">
-            <label for="auth-input-user">Tên người dùng / Họ và tên</label>
-            <input type="text" id="auth-input-user" class="auth-input" placeholder="Ví dụ: Nguyễn Văn A hoặc admin..." value="admin" required autocomplete="username">
+            <label for="auth-input-user">Họ và tên / Tên hiển thị:</label>
+            <input type="text" id="auth-input-user" class="auth-input" placeholder="Ví dụ: Nguyễn Văn An" required autocomplete="name">
           </div>
 
           <div class="auth-form-group">
-            <label for="auth-input-pass">Mật khẩu (hoặc mã PIN cá nhân)</label>
-            <input type="password" id="auth-input-pass" class="auth-input" placeholder="Nhập mật khẩu..." value="123456" required autocomplete="current-password">
+            <label for="auth-input-email">Email liên hệ (tùy chọn):</label>
+            <input type="email" id="auth-input-email" class="auth-input" placeholder="Ví dụ: an.nguyen@gmail.com" autocomplete="email">
           </div>
 
           <div class="auth-actions">
-            <button type="submit" class="auth-submit-btn">Lưu & Đăng Nhập</button>
-            <button type="button" class="auth-demo-btn" id="auth-instant-demo">
-              ⚡ Đăng nhập nhanh
-            </button>
+            <button type="submit" class="auth-submit-btn">💾 Lưu Hồ Sơ</button>
+            <button type="button" class="auth-demo-btn" id="auth-cancel-btn">Hủy</button>
           </div>
         </form>
       </div>
@@ -147,34 +145,30 @@ export function openLoginModal() {
 
   const close = () => modal.remove();
   document.getElementById('auth-close-btn')?.addEventListener('click', close);
+  document.getElementById('auth-cancel-btn')?.addEventListener('click', close);
   modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
 
-  const doLogin = (uVal, pVal) => {
+  const doSave = (uVal, eVal) => {
     if (!uVal) {
-      toast('Vui lòng nhập tên người dùng!', 'error');
+      toast('Vui lòng nhập họ và tên!', 'error');
       return;
     }
-    const displayName = uVal.toLowerCase() === 'admin' ? 'Quản Trị Viên' : uVal;
     saveUser({
       username: uVal,
-      displayName,
-      email: `${uVal.toLowerCase()}@hachihi.vn`,
-      role: 'member',
-      loginAt: new Date().toISOString()
+      displayName: uVal,
+      email: eVal || `${uVal.toLowerCase().replace(/\s+/g, '.')}@local`,
+      role: 'user',
+      savedAt: new Date().toISOString()
     });
     close();
-    toast(`🎉 Đã lưu thông tin! Chào mừng ${displayName}.`, 'success');
+    toast(`🎉 Đã lưu hồ sơ thành công! Xin chào ${uVal}.`, 'success');
   };
 
   document.getElementById('auth-login-form')?.addEventListener('submit', (e) => {
     e.preventDefault();
     const u = document.getElementById('auth-input-user')?.value.trim();
-    const p = document.getElementById('auth-input-pass')?.value;
-    doLogin(u, p);
-  });
-
-  document.getElementById('auth-instant-demo')?.addEventListener('click', () => {
-    doLogin('admin', '123456');
+    const em = document.getElementById('auth-input-email')?.value.trim();
+    doSave(u, em);
   });
 
   setTimeout(() => {
