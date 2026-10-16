@@ -19,6 +19,6 @@ export async function pipeline(commands) {
 // Danh sách thao tác hợp lệ (chặn rác ghi vào bộ đếm)
 export const ACTIONS = new Set([
   'pdf_to_word', 'pdf_to_excel', 'save_pdf', 'goppdf', 'edit_pdf', 'compare_pdf',
-  'sign_pdf', 'fill_form', 'redact_pdf', 'stamp_pdf', 'batch_pdf', 'visit',
+  'sign_pdf', 'fill_form', 'redact_pdf', 'stamp_pdf', 'batch_pdf', 'visit', 'view', 'open_file',
 ]);
 export const dayKey = (d = new Date()) => d.toISOString().slice(0, 10); // theo UTC
