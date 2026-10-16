@@ -38,7 +38,15 @@ Sau khi thêm/sửa biến phải **Redeploy** thì mới có hiệu lực. Chư
 - `src/main.js`, `src/styles/ux.css` – lớp UX mới: toast (`window.toast`), tiến trình (`window.Progress`), kéo thả toàn trang, phím tắt (bấm `?`).
 - `public/legacy/*.js` – logic cũ được tách theo khối, nạp theo thứ tự. `fonts-data.js` (1,4 MB font nhúng) nạp nền, không chặn trang.
 - `public/vendor/` – pdf-lib, pdf.js, jszip, exceljs, tesseract.js tự host (sinh bởi `scripts/copy-vendor.mjs`, không commit).
+- `public/lib/` – thư viện tự host đã build sẵn, CÓ commit: `fflate.min.js` (zlib mức 9), `jsq-jpeg.mjs` + `mozjpeg_enc.wasm` (mã hóa JPEG mozjpeg, nguồn `@jsquash/jpeg`, Apache-2.0). Dùng cho bộ nén PDF.
+- `public/legacy/97-viewer.js` – bộ xem trước PDF nhiều trang dùng chung (Ctrl + cuộn để zoom, vừa ngang / nhiều trang vừa khung) cho các tab Gộp, PDF Tools, Word, Excel.
 - `public/sw.js` – service worker (đổi `VERSION` khi cần xóa cache cũ).
 
 ## Việc tiếp theo
 Chuyển dần `public/legacy/*` sang module trong `src/` (từng tab một), thêm tính năng mới: ký tên, điền form, che thông tin, so sánh nâng cao.
+
+## Lịch sử thay đổi (bản v6 = gộp v4 + v5, đầy đủ nhất)
+- **Nén PDF:** chế độ 🧠 Tự động, 🚀 Siêu nén (giữ lớp chữ tìm kiếm), Cực mạnh; giảm dpi theo kích thước ảnh thật trên trang; mozjpeg + tự nhận ảnh xám; thu nhỏ mặt nạ trong suốt; gộp đối tượng trùng; zlib mức 9; báo cáo "dung lượng còn nằm ở đâu".
+- **Tab Chỉnh sửa:** nhóm "Công cụ nhanh" (Trang chủ), Che thông tin nhạy cảm (tự động / thủ công), bước Che và bước Nén trong Chuỗi liên hoàn, nút Nén PDF dùng chung bộ nén mới.
+- **Xem trước:** bộ xem trước nhiều trang dùng chung (Ctrl + cuộn, vừa ngang, nhiều trang vừa khung) cho Gộp, PDF Tools, Word, Excel; Ctrl + cuộn cho Đối chiếu và Che thông tin.
+- **PDF → Excel:** giữ hình ảnh (ảnh nhúng, logo vector, chữ ký, con dấu) đặt đúng vị trí; chế độ "Giống PDF gốc" (mỗi trang một ảnh).

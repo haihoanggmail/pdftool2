@@ -424,6 +424,7 @@
                             <option value="page">Mỗi trang một sheet (giữ cả chữ và bảng đúng thứ tự)</option>
                             <option value="table">Mỗi bảng một sheet (chỉ lấy bảng dữ liệu)</option>
                             <option value="merged">Gộp các bảng cùng định dạng vào 1 sheet liên tục (Báo cáo/Hóa đơn nhiều trang)</option>
+                            <option value="image">Giống PDF gốc 100%: mỗi trang là một ảnh (không sửa được chữ)</option>
                         </select>
                     </div>
                     <div style="margin-bottom:8px;">
@@ -437,6 +438,9 @@
                     </div>
                     <label style="font-size:12px; display:flex; align-items:center; gap:6px; cursor:pointer; margin-bottom:4px;">
                         <input type="checkbox" id="w2x-stream" checked> Dò cả bảng không có đường viền (căn theo cột số liệu)
+                    </label>
+                    <label style="font-size:12px; display:flex; align-items:center; gap:6px; cursor:pointer; margin-bottom:4px;">
+                        <input type="checkbox" id="w2x-img" checked> Giữ hình ảnh (logo, chữ ký, con dấu, ảnh sản phẩm, hình vẽ vector)
                     </label>
                     <label style="font-size:12px; display:flex; align-items:center; gap:6px; cursor:pointer; margin-bottom:4px;">
                         <input type="checkbox" id="w2x-fit" checked> Thu vừa một trang ngang khi in
@@ -646,6 +650,7 @@
                                         <option value="light">Nhẹ (giữ nét cao)</option>
                                         <option value="strong">Mạnh (ảnh nhỏ hơn)</option>
                                         <option value="extreme">Cực mạnh (nhỏ nhất)</option>
+                                        <option value="raster">Siêu nén (trang thành ảnh, vẫn tìm kiếm được)</option>
                                     </select>
                                 </div>
                             </div>

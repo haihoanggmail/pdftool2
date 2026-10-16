@@ -640,6 +640,7 @@ function buildRibbonHTML() {
                 <option value="balanced">Cân bằng</option>
                 <option value="strong">Nén mạnh</option>
                 <option value="extreme">Cực mạnh</option>
+                <option value="raster">Siêu nén</option>
               </select>
             </div>
             <button class="rb-btn-large" id="rb-apply-compress-btn" title="Giảm dung lượng file PDF trực tiếp">
@@ -2385,6 +2386,20 @@ export async function applyPipelineToEditor() {
       appliedSteps.push('Đóng dấu Watermark ✅');
     }
 
+    // Bước 5: Nén PDF (cuối chuỗi, sau khi đã che / đánh số / watermark)
+    if (doCompress && typeof window.compressPdfBytes === 'function') {
+      if (window.Progress) window.Progress.show('Chuỗi 1-Click: Đang nén PDF...', 85);
+      const lv = document.getElementById('rb-comp-level')?.value || 'auto';
+      const before = bytes.byteLength;
+      const cr = await window.compressPdfBytes(bytes, lv, window.getEditorFileName?.());
+      if (cr.changed) {
+        appliedSteps.push(`Nén PDF (${Math.round(before / 1024)} KB → ${Math.round(cr.bytes.byteLength / 1024)} KB) ✅`);
+        bytes = cr.bytes;
+      } else {
+        appliedSteps.push('Nén PDF (đã tối ưu sẵn, giữ nguyên) ✅');
+      }
+    }
+
     // Nạp lại vào trình sửa PDF
     await window.editorLoadBytes(bytes, window.getEditorFileName(), true);
     if (window.toast) {
@@ -2464,7 +2479,7 @@ export async function applyCompressToEditor() {
       const r = await window.compressPdfBytes(currentBytes, level, window.getEditorFileName && window.getEditorFileName());
       outBytes = r.bytes; note = r.note;
       if (!r.changed) {
-        if (window.toast) window.toast('File đã được tối ưu tối đa, giữ nguyên (' + oldKb + 'KB).', 'info');
+        if (window.toast) window.toast('File đã được tối ưu sẵn (' + oldKb + ' KB), không nén nhỏ thêm được. Thử mức "Cực mạnh" hoặc "Siêu nén".', 'info', 5000);
         return;
       }
     } else {

@@ -924,10 +924,10 @@ self.onmessage = async (ev) => {
     function ensureCompressLibs() {
         if (libsP) return libsP;
         libsP = (async () => {
-            try { if (!window.fflate) await loadScript(['vendor/fflate.min.js']); } catch (e) { console.warn('fflate', e); }
+            try { if (!window.fflate) await loadScript(['lib/fflate.min.js']); } catch (e) { console.warn('fflate', e); }
             try {
-                const mod = await import(new URL('vendor/jsq-jpeg.mjs', document.baseURI).href);
-                const wasm = await WebAssembly.compile(await (await fetch('vendor/mozjpeg_enc.wasm')).arrayBuffer());
+                const mod = await import(new URL('lib/jsq-jpeg.mjs', document.baseURI).href);
+                const wasm = await WebAssembly.compile(await (await fetch('lib/mozjpeg_enc.wasm')).arrayBuffer());
                 await mod.init(wasm);
                 MOZ = mod;
             } catch (e) { console.warn('mozjpeg không khả dụng, dùng bộ mã hóa JPEG của trình duyệt', e); MOZ = null; }

@@ -1,7 +1,7 @@
 // ===================== PDF → Excel (PyMuPDF trích bảng/chữ/kiểu + ExcelJS dựng file) =====================
 (function () {
     const PY_SETUP = `
-import pymupdf, json, re
+import pymupdf, json, re, base64
 
 def _hx(c):
     if c is None: return None
@@ -56,17 +56,145 @@ def _line_info(l):
     size = max([s['size'] for s in sp if s['text'].strip()] or [main['size']])
     return {'text': txt, 'bbox': l['bbox'], 'font': _font(fn), 'size': round(size, 1), 'bold': bold, 'italic': ital, 'color': _hx(main.get('color', 0))}
 
+def _b64(b):
+    return base64.b64encode(b).decode('ascii')
+
+def _encode_pix(pix, max_side=1600):
+    try:
+        if pix.colorspace is not None and pix.colorspace.n not in (1, 3):
+            pix = pymupdf.Pixmap(pymupdf.csRGB, pix)
+    except Exception:
+        pass
+    k = 0
+    m = max(pix.width, pix.height)
+    while m > max_side and k < 4:
+        m = m // 2
+        k += 1
+    if k:
+        try: pix.shrink(k)
+        except Exception: pass
+    if pix.alpha:
+        return 'png', pix.tobytes('png')
+    try:
+        return 'jpeg', pix.tobytes('jpeg', jpg_quality=82)
+    except Exception:
+        return 'png', pix.tobytes('png')
+
+def _xref_image(doc, xref):
+    try:
+        info = doc.extract_image(xref)
+    except Exception:
+        info = None
+    if not info: return None
+    sm = info.get('smask', 0)
+    ext = (info.get('ext') or '').lower()
+    w, h = info.get('width', 0), info.get('height', 0)
+    data = info.get('image')
+    if (not sm) and ext in ('jpg', 'jpeg') and max(w, h) <= 1600 and info.get('colorspace') in (1, 3) and data and len(data) < 700000:
+        return 'jpeg', data
+    try:
+        pix = pymupdf.Pixmap(doc, xref)
+        if sm:
+            try:
+                mask = pymupdf.Pixmap(doc, sm)
+                pix = pymupdf.Pixmap(pix, mask)
+            except Exception:
+                pass
+        return _encode_pix(pix)
+    except Exception:
+        return None
+
+def _clip_image(page, rect, dpi=150):
+    try:
+        pix = page.get_pixmap(clip=rect, dpi=dpi, alpha=False)
+        return _encode_pix(pix)
+    except Exception:
+        return None
+
+def _page_images(page, doc, pr, lines, tbboxes, blobs, budget):
+    out = []
+    taken = []
+    try: infos = page.get_image_info(xrefs=True)
+    except Exception: infos = []
+    page_area = max(1.0, pr.width * pr.height)
+    for inf in infos:
+        bb = inf.get('bbox')
+        if not bb: continue
+        x0, y0, x1, y1 = bb
+        w, h = x1 - x0, y1 - y0
+        if w < 6 or h < 6: continue
+        tr = tuple(bb)
+        inside = [li for li in lines if _inside(tr, (li['bbox'][0] + li['bbox'][2]) / 2, (li['bbox'][1] + li['bbox'][3]) / 2, 0)]
+        if w * h >= 0.8 * page_area and len(lines) >= 3: continue
+        if len(inside) >= 3: continue
+        if budget[0] <= 0: break
+        xref = inf.get('xref', 0)
+        t = inf.get('transform')
+        odd = t is not None and (abs(t[1]) > 0.01 or abs(t[2]) > 0.01 or t[0] < 0 or t[3] < 0)
+        key = None
+        if xref and not odd:
+            key = 'x%d' % xref
+            if key not in blobs:
+                r = _xref_image(doc, xref)
+                if r:
+                    blobs[key] = {'e': r[0], 'd': _b64(r[1])}
+                    budget[0] -= len(r[1])
+                else:
+                    key = None
+        if key is None:
+            r = _clip_image(page, pymupdf.Rect(bb))
+            if not r: continue
+            key = 'c%d_%d' % (page.number, len(out))
+            blobs[key] = {'e': r[0], 'd': _b64(r[1])}
+            budget[0] -= len(r[1])
+        out.append({'k': key, 'x0': x0, 'y0': y0, 'x1': x1, 'y1': y1})
+        taken.append(tr)
+    # hình vector (logo, con dấu, chữ ký vẽ bằng nét) -> chụp đúng vùng đó thành ảnh
+    try: regions = page.cluster_drawings()
+    except Exception: regions = []
+    cnt = 0
+    for r in regions:
+        w, h = r.width, r.height
+        if w < 14 or h < 14 or w * h < 400: continue
+        if w * h >= 0.7 * page_area: continue
+        if max(w / h, h / w) > 12: continue
+        tr = tuple(r)
+        ar = max(1.0, w * h)
+        if any(_inter(tr, tb) / ar > 0.5 for tb in tbboxes): continue
+        if any(_inter(tr, tk) / ar > 0.5 for tk in taken): continue
+        if any(_inside(tr, (li['bbox'][0] + li['bbox'][2]) / 2, (li['bbox'][1] + li['bbox'][3]) / 2, 0) for li in lines): continue
+        if budget[0] <= 0 or cnt >= 12: break
+        rr = _clip_image(page, r, 170)
+        if not rr: continue
+        key = 'v%d_%d' % (page.number, cnt)
+        blobs[key] = {'e': rr[0], 'd': _b64(rr[1])}
+        budget[0] -= len(rr[1])
+        out.append({'k': key, 'x0': r.x0, 'y0': r.y0, 'x1': r.x1, 'y1': r.y1, 'vec': True})
+        cnt += 1
+    return out
+
 def w2x_extract(opts_json):
     opts = json.loads(opts_json)
     doc = pymupdf.open('/w2x_in.pdf')
     pages = opts.get('pages')
     if not pages: pages = list(range(doc.page_count))
     res = []
+    blobs = {}
+    budget = [14000000]
     for pn in pages:
         if pn < 0 or pn >= doc.page_count: continue
         w2x_progress('Đang đọc trang %d/%d...' % (pn + 1, doc.page_count))
         page = doc[pn]
         pr = page.rect
+        if opts.get('render'):
+            try:
+                rp = page.get_pixmap(dpi=opts.get('dpi', 150), alpha=False)
+                re_ = _encode_pix(rp, 2600)
+                blobs['p%d' % pn] = {'e': re_[0], 'd': _b64(re_[1])}
+                res.append({'page': pn + 1, 'w': pr.width, 'h': pr.height, 'items': [], 'images': [], 'render': 'p%d' % pn, 'hasText': True})
+            except Exception:
+                pass
+            continue
         d = page.get_text('dict')
         lines = []
         for b in d.get('blocks', []):
@@ -174,9 +302,13 @@ def w2x_extract(opts_json):
             y0 = min(li['bbox'][1] for li in ls); y1 = max(li['bbox'][3] for li in ls)
             items.append({'type': 'text', 'y0': y0, 'y1': y1, 'segs': segs})
         items.sort(key=lambda it: it['y0'])
-        res.append({'page': pn + 1, 'w': pr.width, 'h': pr.height, 'items': items, 'hasText': len(lines) > 0})
+        images = []
+        if opts.get('images', True):
+            try: images = _page_images(page, doc, pr, lines, tbboxes, blobs, budget)
+            except Exception: images = []
+        res.append({'page': pn + 1, 'w': pr.width, 'h': pr.height, 'items': items, 'images': images, 'hasText': len(lines) > 0})
     doc.close()
-    return json.dumps(res)
+    return json.dumps({'pages': res, 'blobs': blobs})
 `;
     const WORKER_SRC = `
 let inst = null, py = null;
@@ -430,6 +562,104 @@ self.onmessage = async (ev) => {
         ws.pageSetup = { orientation: 'portrait', paperSize: 9, fitToPage: !!o.fit, fitToWidth: 1, fitToHeight: 0 };
     }
 
+    // ---------- Ảnh: đặt đúng vị trí theo lưới hàng / cột ----------
+    function imgIdOf(o, key) {
+        if (!o._img) o._img = { ids: {}, n: 0 };
+        const ids = o._img.ids;
+        if (ids[key] === undefined) {
+            const b = (o.blobs || {})[key];
+            if (!b) return undefined;
+            ids[key] = o._wb.addImage({ base64: b.d, extension: b.e === 'png' ? 'png' : 'jpeg' });
+        }
+        return ids[key];
+    }
+    // y (điểm PDF) -> vị trí hàng (thập phân, tính từ 0) theo các đoạn đã dựng
+    function rowAt(map, y) {
+        if (!map.length) return Math.max(0, y / 15);
+        if (y <= map[0].y0) return Math.max(0, map[0].r0 - (map[0].y0 - y) / 15);
+        for (let i = 0; i < map.length; i++) {
+            const m = map[i], nx = map[i + 1];
+            if (y <= m.y1) {
+                const f = (y - m.y0) / Math.max(1e-6, m.y1 - m.y0);
+                return m.r0 + Math.max(0, Math.min(1, f)) * (m.r1 - m.r0);
+            }
+            if (nx && y < nx.y0) {
+                const f = (y - m.y1) / Math.max(1e-6, nx.y0 - m.y1);
+                return m.r1 + f * (nx.r0 - m.r1);
+            }
+        }
+        const l = map[map.length - 1];
+        return l.r1 + (y - l.y1) / 15;
+    }
+    // x (điểm PDF) -> vị trí cột (thập phân) theo ĐỘ RỘNG CỘT THỰC TẾ của sheet (1 ký tự ~ 5.7 điểm)
+    function colAt(cw, x0, x) {
+        let st = x0;
+        for (let i = 0; i < cw.length; i++) {
+            if (x < st + cw[i]) return i + Math.max(0, (x - st) / cw[i]);
+            st += cw[i];
+        }
+        return cw.length + (x - st) / 48;
+    }
+    function placeImages(ws, pg, o, map, G, endX) {
+        const hOf = i => ws.getRow(i + 1).height || 15;
+        const scale = {};
+        const nCols = Math.max(ws.columns ? ws.columns.length : 0, G.length), cw = [];
+        for (let i = 0; i < nCols; i++) cw.push((ws.getColumn(i + 1).width || 8.43) * 5.7);
+        const gx0 = G.length ? G[0] : 0;
+        const jobs = [];
+        pg.images.forEach(im => {
+            const id = imgIdOf(o, im.k);
+            if (id === undefined) return;
+            const r0 = rowAt(map, im.y0), r1 = Math.max(r0 + 0.2, rowAt(map, im.y1));
+            const c0 = colAt(cw, gx0, im.x0), c1 = Math.max(c0 + 0.05, colAt(cw, gx0, im.x1));
+            // đảm bảo các hàng phủ ảnh đủ cao để ảnh không méo / không đè sang hàng khác
+            const i0 = Math.floor(r0), i1 = Math.ceil(r1) - 1;
+            let H = 0;
+            for (let i = i0; i <= i1; i++) H += (Math.min(r1, i + 1) - Math.max(r0, i)) * hOf(i);
+            const need = im.y1 - im.y0;
+            if (H > 0 && H < need * 0.97) { const f = need / H; for (let i = i0; i <= i1; i++) scale[i] = Math.max(scale[i] || 1, f); }
+            jobs.push({ id, r0, r1, c0, c1 });
+        });
+        Object.keys(scale).forEach(k => { const i = +k; ws.getRow(i + 1).height = Math.min(409, hOf(i) * scale[k]); });
+        // ExcelJS quy đổi phần lẻ theo ô mặc định (64px x 20px) nên tự tính EMU theo độ rộng cột / chiều cao hàng thật
+        const colEmu = i => Math.round(((ws.getColumn(i + 1).width || 8.43) * 7 + 5) * 9525);
+        const rowEmu = i => Math.round(hOf(i) * 12700);
+        const spanC = (a, b) => { let e = 0; for (let i = Math.floor(a); i < Math.ceil(b); i++) e += colEmu(i) * (Math.min(b, i + 1) - Math.max(a, i)); return e; };
+        const spanR = (a, b) => { let e = 0; for (let i = Math.floor(a); i < Math.ceil(b); i++) e += rowEmu(i) * (Math.min(b, i + 1) - Math.max(a, i)); return e; };
+        const nat = (c, r) => {
+            const ci = Math.floor(c), ri = Math.floor(r);
+            return { nativeCol: ci, nativeColOff: Math.round((c - ci) * colEmu(ci)), nativeRow: ri, nativeRowOff: Math.round((r - ri) * rowEmu(ri)) };
+        };
+        jobs.forEach(j => {
+            try {
+                const wE = spanC(j.c0, j.c1), hE = spanR(j.r0, j.r1);
+                let k = 1, cT = null;
+                // chữ trong ô nằm bên phải ảnh (ô luôn căn trái cột) -> thu ảnh lại cho khỏi đè lên chữ
+                const rA = Math.floor(j.r0), rB = Math.ceil(j.r1) - 1, cA = Math.floor(j.c0), cB = Math.ceil(j.c1) - 1;
+                for (let c = cA + 1; c <= cB && cT === null; c++) {
+                    for (let r = rA; r <= rB; r++) {
+                        const v = ws.getCell(r + 1, c + 1).value;
+                        if (v !== null && v !== undefined && v !== '') { cT = c; break; }
+                    }
+                }
+                if (cT !== null && cT < j.c1) { const kk = spanC(j.c0, cT) / wE; if (kk >= 0.4) k = kk; }
+                ws.addImage(j.id, { tl: nat(j.c0, j.r0), ext: { width: Math.max(4, wE * k / 9525), height: Math.max(4, hE * k / 9525) }, editAs: 'oneCell' });
+                o._img.n++;
+            } catch (e) { console.warn('Không chèn được ảnh', e); }
+        });
+    }
+    // Chế độ "giống PDF gốc": mỗi trang là một ảnh đặt đúng khổ giấy
+    function buildSheetImage(wb, pg, o, used) {
+        const id = pg.render ? imgIdOf(o, pg.render) : undefined;
+        if (id === undefined) return false;
+        const ws = wb.addWorksheet(safeName('Trang ' + pg.page, used));
+        ws.views = [{ showGridLines: false }];
+        ws.addImage(id, { tl: { col: 0, row: 0 }, ext: { width: Math.round(pg.w * 96 / 72), height: Math.round(pg.h * 96 / 72) } });
+        ws.pageSetup = { orientation: pg.w > pg.h ? 'landscape' : 'portrait', paperSize: 9, fitToPage: true, fitToWidth: 1, fitToHeight: 1 };
+        o._img.n++;
+        return true;
+    }
+
     function buildSheetPage(wb, pg, o, used) {
         const ws = wb.addWorksheet(safeName('Trang ' + pg.page, used));
         const tables = pg.items.filter(i => i.type === 'table');
@@ -468,10 +698,11 @@ self.onmessage = async (ev) => {
             return t.xs.map((x, k) => k);
         };
         let row = 1, prevY = null;
-        const merges = [];
+        const merges = [], rmap = [];
         pg.items.forEach(it => {
             if (prevY !== null && it.y0 - prevY > 4) {
                 ws.getRow(row).height = Math.min(36, it.y0 - prevY);
+                rmap.push({ y0: prevY, y1: it.y0, r0: row - 1, r1: row });
                 row++;
             }
             if (it.type === 'text') {
@@ -488,6 +719,7 @@ self.onmessage = async (ev) => {
                     styleCell(cell, { font: s.font, size: s.size, bold: s.bold, italic: s.italic, color: s.color, h: 'left', v: 'middle', text: s.text, wrap: false });
                     lastCol = ci;
                 });
+                rmap.push({ y0: it.y0, y1: it.y1, r0: row - 1, r1: row });
                 row++;
             } else {
                 const start = row;
@@ -518,10 +750,12 @@ self.onmessage = async (ev) => {
                         merges.push([r0, c0, r1, cEnd]);
                     }
                 });
+                for (let ri = 0; ri < nR; ri++) rmap.push({ y0: it.ys[ri], y1: it.ys[ri + 1], r0: start - 1 + ri, r1: start + ri });
                 row = start + nR;
             }
             prevY = it.y1;
         });
+        if (o.images !== false && pg.images && pg.images.length) placeImages(ws, pg, o, rmap, G, endX);
         merges.forEach(m => { try { ws.mergeCells(m[0], m[1], m[2], m[3]); } catch (e) {} });
         ws.pageSetup = { orientation: pg.w > pg.h ? 'landscape' : 'portrait', paperSize: 9, fitToPage: !!o.fit, fitToWidth: 1, fitToHeight: 0 };
         return ws;
@@ -559,10 +793,13 @@ self.onmessage = async (ev) => {
         await ensureExcelJS();
         const wb = new ExcelJS.Workbook();
         wb.creator = 'PDF tool by hachihi.vn';
+        o._wb = wb; o._img = { ids: {}, n: 0 };
         o.numStyle = detectNumStyle(pages, o.numMode);
         const used = {};
         let tcount = 0, sheetCount = 0;
-        if (o.mode === 'merged') {
+        if (o.mode === 'image') {
+            pages.forEach(pg => { if (buildSheetImage(wb, pg, o, used)) sheetCount++; });
+        } else if (o.mode === 'merged') {
             const allTables = [];
             pages.forEach(pg => {
                 pg.items.filter(i => i.type === 'table').forEach(t => allTables.push({ pg, t }));
@@ -571,19 +808,21 @@ self.onmessage = async (ev) => {
                 buildMergedSheet(wb, allTables, o, used);
                 sheetCount = 1;
             } else {
-                pages.forEach(pg => { if (pg.items.length) { buildSheetPage(wb, pg, o, used); sheetCount++; } });
+                pages.forEach(pg => { if (pg.items.length || (o.images !== false && pg.images && pg.images.length)) { buildSheetPage(wb, pg, o, used); sheetCount++; } });
             }
         } else {
             pages.forEach(pg => {
                 if (o.mode === 'table') {
                     pg.items.filter(i => i.type === 'table').forEach(it => { buildSheetTable(wb, pg, it, ++tcount, o, used); sheetCount++; });
-                } else if (pg.items.length) { buildSheetPage(wb, pg, o, used); sheetCount++; }
+                } else if (pg.items.length || (o.images !== false && pg.images && pg.images.length)) { buildSheetPage(wb, pg, o, used); sheetCount++; }
             });
         }
         if (!sheetCount) return null;
         const buf = await wb.xlsx.writeBuffer();
-        return { blob: new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), sheets: sheetCount, tables: pages.reduce((n, p) => n + p.items.filter(i => i.type === 'table').length, 0) };
+        return { blob: new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), images: o._img.n, sheets: sheetCount, tables: pages.reduce((n, p) => n + p.items.filter(i => i.type === 'table').length, 0) };
     }
+
+    window.__w2x = { buildWorkbook };
 
     // ---------- Giao diện ----------
     function render() {
@@ -767,14 +1006,14 @@ self.onmessage = async (ev) => {
                 if (m.type === 'progress') {
                     const mm = /(\d+)\/(\d+)/.exec(m.msg);
                     if (mm) setProgress((+mm[1] - 1) / +mm[2] * 100, it.file.name + ': ' + m.msg);
-                } else if (m.type === 'done' && m.id === it.id) { listeners.delete(fn); resolve(JSON.parse(m.json)); }
+                } else if (m.type === 'done' && m.id === it.id) { listeners.delete(fn); const j = JSON.parse(m.json); resolve(Array.isArray(j) ? { pages: j, blobs: {} } : j); }
                 else if (m.type === 'error' && m.id === it.id) { listeners.delete(fn); reject(new Error(m.message)); }
             };
             listeners.add(fn);
             it.file.arrayBuffer().then(buf => {
                 const pages = parsePages($('w2x-pages').value, it.numPages);
                 if (pages && !pages.length) { listeners.delete(fn); reject(new Error('Khoảng trang không hợp lệ.')); return; }
-                worker.postMessage({ type: 'extract', id: it.id, bytes: buf, opts: { pages: pages, stream: $('w2x-stream').checked } }, [buf]);
+                worker.postMessage({ type: 'extract', id: it.id, bytes: buf, opts: { pages: pages, stream: $('w2x-stream').checked, images: $('w2x-img') ? $('w2x-img').checked : true, render: $('w2x-mode').value === 'image', dpi: 150 } }, [buf]);
             }).catch(e => { listeners.delete(fn); reject(e); });
         });
     }
@@ -794,14 +1033,15 @@ self.onmessage = async (ev) => {
                 render();
                 setProgress(0, 'Đang chuyển ' + it.file.name + ' (' + (i + 1) + '/' + items.length + ')...');
                 try {
-                    const pages = await extractOne(it);
+                    const ex = await extractOne(it);
+                    const pages = ex.pages;
                     it.pagesData = pages;
                     setProgress(100, 'Đang tạo file Excel cho ' + it.file.name + '...');
-                    const out = await buildWorkbook(pages, { mode: $('w2x-mode').value, numMode: $('w2x-num').value, fit: $('w2x-fit').checked });
+                    const out = await buildWorkbook(pages, { mode: $('w2x-mode').value, numMode: $('w2x-num').value, fit: $('w2x-fit').checked, blobs: ex.blobs || {}, images: $('w2x-img') ? $('w2x-img').checked : true });
                     if (!out) { it.status = 'err'; it.text = 'Không tìm thấy bảng hoặc chữ nào để đưa vào Excel.'; render(); continue; }
                     it.blob = out.blob;
                     it.name = it.file.name.replace(/\.pdf$/i, '') + '.xlsx';
-                    it.status = 'ok'; it.text = 'Xong • ' + out.sheets + ' sheet • ' + out.tables + ' bảng • ' + fmtBytes(out.blob.size);
+                    it.status = 'ok'; it.text = 'Xong • ' + out.sheets + ' sheet • ' + out.tables + ' bảng' + (out.images ? ' • ' + out.images + ' ảnh' : '') + ' • ' + fmtBytes(out.blob.size);
                     if (!out.tables && $('w2x-mode').value === 'page') it.warn = 'Không có bảng có đường viền, chữ được xếp theo vị trí. Thử bật "Dò cả bảng không có đường viền".';
                     ok++;
                     if (typeof logAction === 'function') logAction('pdf_to_excel');

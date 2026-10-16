@@ -151,6 +151,19 @@ async function runTests() {
   assert(corruptBuffer.length < 2048 || corruptBuffer[0] !== 0x50, 'Bộ đệm rỗng/hỏng bị phát hiện chính xác');
   console.log('   ✓ Kiểm tra cấu trúc xác thực DOCX hoạt động chính xác.');
 
+  // 5. Toàn vẹn mã nguồn: cú pháp các script legacy, thư viện tự host cần cho bộ nén / xem trước
+  console.log('5. Kiểm thử cú pháp mã nguồn & thư viện tự host...');
+  const { execFileSync } = await import('node:child_process');
+  const { existsSync, readdirSync } = await import('node:fs');
+  for (const f of readdirSync('public/legacy').filter((n) => n.endsWith('.js'))) {
+    try { execFileSync(process.execPath, ['--check', 'public/legacy/' + f], { stdio: 'pipe' }); }
+    catch (e) { assert(false, 'Lỗi cú pháp trong public/legacy/' + f); }
+  }
+  for (const f of ['lib/fflate.min.js', 'lib/jsq-jpeg.mjs', 'lib/mozjpeg_enc.wasm', 'legacy/97-viewer.js']) {
+    assert(existsSync('public/' + f), 'Thiếu file public/' + f);
+  }
+  console.log('   ✓ Script legacy hợp lệ, đủ thư viện fflate / mozjpeg / bộ xem trước.');
+
   console.log('\n=== TẤT CẢ KIỂM THỬ ĐÃ ĐẠT CHUẨN THÀNH CÔNG (100% PASS) ===\n');
 }
 
