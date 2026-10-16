@@ -156,6 +156,7 @@ function switchTab(tabId, btn) {
             if (ow) ow.classList.add('active');
         }
     }
+    try { logView(tabId); } catch (e) {}
     if (tabId === 'tab-compare') setTimeout(renderCompare, 100);
     if (tabId === 'tab-merge') setTimeout(renderMergePreview, 100);
     if (tabId === 'tab-editor' && editorPdfJsDoc) setTimeout(editorRenderPage, 100);
@@ -4261,26 +4262,75 @@ function removeVietnameseTones(str) {
     return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/đ/g, "d").replace(/Đ/g, "D");
 }
 
-function logAction(action) {
-    // Ghi nhận lượt thao tác ẩn danh (chỉ tên thao tác + mã ngẫu nhiên) về /api/track trên Vercel.
+function logAction(action, detail) {
+    // Ghi nhận thao tác về /api/track (Vercel) -> Google Sheet.
+    // Gửi: action, detail (tên tab / tên file...), mã trình duyệt (uid), mã phiên (sid), ngôn ngữ, độ phân giải.
+    // IP / quốc gia / thành phố / User-Agent do server tự lấy từ request.
     // Tôn trọng Do Not Track và công tắc localStorage 'pdftool-no-log' = '1'.
     try {
         if (localStorage.getItem('pdftool-no-log') === '1' || navigator.doNotTrack === '1') return;
     } catch (e) {}
     try {
+        const newId = function () {
+            return (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : (String(Math.random()).slice(2) + Date.now());
+        };
         let uid = localStorage.getItem('pdftool-uid');
-        if (!uid) {
-            uid = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : (String(Math.random()).slice(2) + Date.now());
-            localStorage.setItem('pdftool-uid', uid);
-        }
+        if (!uid) { uid = newId(); localStorage.setItem('pdftool-uid', uid); }
+        let sid = '';
+        try {
+            sid = sessionStorage.getItem('pdftool-sid');
+            if (!sid) { sid = newId(); sessionStorage.setItem('pdftool-sid', sid); }
+        } catch (e) { sid = ''; }
         fetch('/api/track', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: action, uid: uid }),
+            body: JSON.stringify({
+                action: action,
+                detail: String(detail == null ? '' : detail).slice(0, 200),
+                uid: uid,
+                sid: sid,
+                lang: navigator.language || '',
+                screen: (window.screen ? screen.width + 'x' + screen.height : '')
+            }),
             keepalive: true
         }).catch(() => {});
     } catch (e) {}
 }
+
+// Ghi "view" mỗi khi chuyển tab (detail = tên tab ngắn gọn)
+const LOG_TAB_NAMES = { 'tab-main': 'organize', 'tab-merge': 'merge', 'tab-compare': 'compare', 'tab-editor': 'editor', 'tab-about': 'about' };
+let _lastLoggedView = '';
+function logView(tabId) {
+    const name = LOG_TAB_NAMES[tabId] || String(tabId || '').replace(/^tab-/, '');
+    if (!name || name === _lastLoggedView) return;
+    _lastLoggedView = name;
+    logAction('view', name);
+}
+
+// Ghi "open_file" mỗi khi người dùng chọn / thả file (detail = tên file)
+(function initOpenFileLog() {
+    const recent = {};
+    function logFiles(files) {
+        if (!files) return;
+        const now = Date.now();
+        Array.prototype.forEach.call(files, function (f) {
+            if (!f || !f.name) return;
+            const k = f.name + '|' + f.size;
+            if (recent[k] && now - recent[k] < 1500) return;   // tránh ghi trùng (thả file kích hoạt nhiều sự kiện)
+            recent[k] = now;
+            logAction('open_file', f.name);
+        });
+    }
+    // Chọn file qua hộp thoại / Ctrl+O / thả toàn trang (main.js gửi lại sự kiện change)
+    document.addEventListener('change', function (e) {
+        const t = e.target;
+        if (t && t.tagName === 'INPUT' && t.type === 'file') logFiles(t.files);
+    }, true);
+    // Thả file vào các vùng kéo-thả riêng của từng tab
+    document.addEventListener('drop', function (e) {
+        if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) logFiles(e.dataTransfer.files);
+    }, true);
+})();
 
 // Ghi nhận 1 lượt truy cập cho mỗi phiên (mở tab trình duyệt), không đếm lại khi F5
 (function logVisitOnce() {
