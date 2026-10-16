@@ -4282,6 +4282,15 @@ function logAction(action) {
     } catch (e) {}
 }
 
+// Ghi nhận 1 lượt truy cập cho mỗi phiên (mở tab trình duyệt), không đếm lại khi F5
+(function logVisitOnce() {
+    try {
+        if (sessionStorage.getItem('pdftool-visited') === '1') return;
+        sessionStorage.setItem('pdftool-visited', '1');
+    } catch (e) {}
+    logAction('visit');
+})();
+
 async function renderEditorPageImage(pageNum) {
     const page = await editorPdfJsDoc.getPage(pageNum);
     const vp = page.getViewport({
