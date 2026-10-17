@@ -275,27 +275,27 @@ function buildRibbonHTML() {
             <div class="word-style-gallery">
               <div class="word-style-card style-normal active" data-style="normal" title="Áp dụng kiểu văn bản thường (Normal - 12pt)">
                 <div class="word-style-preview">AaBbCc</div>
-                <div class="word-style-name">Normal</div>
+                <div class="word-style-name">Bình thường</div>
               </div>
               <div class="word-style-card style-nospacing" data-style="nospacing" title="Không giãn dòng (No Spacing)">
                 <div class="word-style-preview">AaBbCc</div>
-                <div class="word-style-name">No Spacing</div>
+                <div class="word-style-name">Không giãn dòng</div>
               </div>
               <div class="word-style-card style-h1" data-style="heading1" title="Tiêu đề 1 (Heading 1 - 18pt Đậm xanh Word)">
-                <div class="word-style-preview">Heading 1</div>
-                <div class="word-style-name">Heading 1</div>
+                <div class="word-style-preview">Tiêu đề 1</div>
+                <div class="word-style-name">Tiêu đề 1</div>
               </div>
               <div class="word-style-card style-h2" data-style="heading2" title="Tiêu đề 2 (Heading 2 - 14pt Đậm xanh Word)">
-                <div class="word-style-preview">Heading 2</div>
-                <div class="word-style-name">Heading 2</div>
+                <div class="word-style-preview">Tiêu đề 2</div>
+                <div class="word-style-name">Tiêu đề 2</div>
               </div>
               <div class="word-style-card style-title" data-style="title" title="Tựa đề lớn (Title - 22pt)">
-                <div class="word-style-preview">Title</div>
-                <div class="word-style-name">Title</div>
+                <div class="word-style-preview">Tựa đề</div>
+                <div class="word-style-name">Tựa đề</div>
               </div>
               <div class="word-style-card style-subtitle" data-style="subtitle" title="Tựa đề phụ (Subtitle - 13pt Nghiêng)">
-                <div class="word-style-preview">Subtitle</div>
-                <div class="word-style-name">Subtitle</div>
+                <div class="word-style-preview">Phụ đề</div>
+                <div class="word-style-name">Phụ đề</div>
               </div>
             </div>
           </div>
