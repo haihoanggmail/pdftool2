@@ -248,3 +248,24 @@
 .auth-logout-btn:hover {
   background: #dc2626;
 }
+
+/* Thông báo lỗi đăng nhập */
+.auth-error {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #b91c1c;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 12px;
+  border-radius: 6px;
+  margin-bottom: 14px;
+}
+.auth-error.shake { animation: authShake 0.35s ease; }
+@keyframes authShake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-6px); }
+  40% { transform: translateX(6px); }
+  60% { transform: translateX(-4px); }
+  80% { transform: translateX(4px); }
+}
+.auth-submit-btn:disabled { background: #94a3b8; cursor: not-allowed; }

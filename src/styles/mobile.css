@@ -23,6 +23,9 @@
     -webkit-overflow-scrolling: touch;
   }
   .tab-btn { padding: 10px 12px; font-size: 13px; }
+  /* Nút đăng nhập luôn dính mép phải, không bị cuộn mất */
+  #nav-login-btn { position: sticky; right: 4px; z-index: 2; padding: 6px 10px; font-size: 12.5px; }
+  .auth-input { font-size: 16px !important; }
   .nav-menu { max-width: calc(100vw - 16px); }
 
   /* Các tab: xếp dọc, không cắt nội dung */
