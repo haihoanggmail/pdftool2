@@ -164,7 +164,7 @@ export function openLoginModal() {
       return;
     }
 
-    errEl.textContent = (result && result.error) || 'Sai tên đăng nhập hoặc mật khẩu.';
+    errEl.textContent = (result && result.error) || 'Không tìm thấy người dùng này.';
     errEl.style.display = 'block';
     errEl.classList.remove('shake'); void errEl.offsetWidth; errEl.classList.add('shake');
     if (pEl) { pEl.value = ''; pEl.focus(); }
@@ -179,18 +179,18 @@ export function openLoginModal() {
 
 /**
  * KIỂM TRA ĐĂNG NHẬP.
- * Hiện tại LUÔN báo sai (chưa có hệ thống tài khoản).
+ * Hiện tại LUÔN báo "không tìm thấy người dùng" (chưa có hệ thống tài khoản).
  * Sau này thay thân hàm này bằng gọi API thật, ví dụ:
  *   const r = await fetch('/api/login', { method:'POST', headers:{'Content-Type':'application/json'},
  *                                          body: JSON.stringify({ username, password }) });
  *   const j = await r.json();
  *   return j.ok ? { ok:true, user:{ username, displayName: j.name || username, role: j.role || 'user' } }
- *               : { ok:false, error:'Sai tên đăng nhập hoặc mật khẩu.' };
+ *               : { ok:false, error:'Không tìm thấy người dùng này.' };
  * Lưu ý: KHÔNG kiểm tra mật khẩu bằng JavaScript phía trình duyệt (ai cũng đọc được), phải kiểm tra ở server.
  */
 async function verifyLogin(username, password) {
   await new Promise((r) => setTimeout(r, 400));
-  return { ok: false, error: 'Sai tên đăng nhập hoặc mật khẩu.' };
+  return { ok: false, error: 'Không tìm thấy người dùng này.' };
 }
 
 export function initAuth() {
