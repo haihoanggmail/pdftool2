@@ -831,3 +831,34 @@
   background: #f8f9fa;
   border-top: 1px solid #edebe9;
 }
+
+/* ==========================================================================
+   Menu "TỆP" (rb-file-dropdown) và menu đổi chữ hoa/thường luôn nền TRẮNG kiểu Word.
+   Lỗi cũ: ở chế độ tối, class .menu-item lấy màu chữ sáng (#e6e8eb) của giao diện tối
+   -> chữ sáng trên nền trắng, không đọc được. Ở đây ép màu chữ tối + hover sáng, ở cả hai chế độ.
+   ========================================================================== */
+#rb-file-dropdown,
+html[data-theme="dark"] #rb-file-dropdown {
+  color: #1f2937;
+  color-scheme: light;
+}
+#rb-file-dropdown .menu-item,
+html[data-theme="dark"] #rb-file-dropdown .menu-item {
+  color: #1f2937;
+}
+#rb-file-dropdown .menu-item:hover,
+html[data-theme="dark"] #rb-file-dropdown .menu-item:hover {
+  background: #e8f1fb !important;
+}
+#rb-file-dropdown .menu-item:disabled,
+html[data-theme="dark"] #rb-file-dropdown .menu-item:disabled {
+  color: #9ca3af;
+  cursor: not-allowed;
+}
+#rb-case-menu,
+html[data-theme="dark"] #rb-case-menu {
+  color: #1f2937;
+}
+#rb-case-menu .rb-case-opt:hover {
+  background: #e8f1fb;
+}
