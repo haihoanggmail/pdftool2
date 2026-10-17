@@ -506,7 +506,7 @@ function buildRibbonHTML() {
         <div class="ribbon-group">
           <div class="ribbon-group-body">
             <button class="rb-btn-large" id="rb-del-page-btn" style="color:#b91c1c;" title="Xóa trang PDF đang xem khỏi tài liệu">
-              <span class="rb-icon">🗑️</span><span class="rb-label">Xóa<br>Trang Này</span>
+              <span class="rb-icon">🗑️</span><span class="rb-label">Xóa bỏ<br>Trang Này</span>
             </button>
             <button class="rb-btn-large" id="rb-add-blank-page-btn" title="Chèn 1 trang trắng sau trang hiện tại">
               <span class="rb-icon">➕</span><span class="rb-label">Thêm<br>Trang Trắng</span>

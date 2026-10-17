@@ -51,7 +51,7 @@ const HTML = `
         <canvas id="sg-canvas" width="520" height="190"></canvas>
         <div class="sg-row"><label>Màu <select id="sg-color"><option value="#111111">Đen</option><option value="#1d4ed8">Xanh dương</option><option value="#b91c1c">Đỏ</option></select></label>
         <label>Nét <input type="range" id="sg-width" min="1" max="8" value="3"></label>
-        <button class="sg-btn" id="sg-clear">Xóa</button></div>
+        <button class="sg-btn" id="sg-clear">Xóa nét</button></div>
       </div>
       <div id="sg-img" hidden>
         <input type="file" id="sg-imgfile" accept="image/*" hidden>
