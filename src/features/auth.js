@@ -42,16 +42,8 @@ export function updateAuthUI() {
     btn.title = 'Tài khoản người dùng - Bấm để xem thông tin';
   } else {
     btn.classList.remove('logged-in');
-    btn.innerHTML = `👤 Tài khoản`;
-    btn.title = 'Lưu thông tin cá nhân hoặc chữ ký của bạn';
-  }
-
-  const notice = document.getElementById('intro-auth-notice');
-  if (notice) {
-    notice.innerHTML = `🎉 <b>Miễn phí 100% cho mọi người</b> — Toàn bộ tính năng cao cấp (Chuỗi liên hoàn, Ký tên, Canh lề NĐ30...) đều mở sẵn trên máy bạn.`;
-    notice.style.background = '#f0fdf4';
-    notice.style.borderColor = '#86efac';
-    notice.style.color = '#166534';
+    btn.innerHTML = `👤 Đăng nhập`;
+    btn.title = 'Đăng nhập tài khoản nội bộ';
   }
 }
 
@@ -109,31 +101,33 @@ export function openLoginModal() {
     return;
   }
 
-  // Show login/profile form modal
+  // Form đăng nhập
   modal.innerHTML = `
     <div class="auth-modal-dialog">
       <div class="auth-modal-header">
-        <h3>👤 Hồ Sơ Người Dùng (Cục Bộ)</h3>
+        <h3>🔐 Đăng nhập</h3>
         <button class="auth-modal-close" id="auth-close-btn">&times;</button>
       </div>
       <div class="auth-modal-body">
         <p style="font-size:13px; color:#475569; margin:0 0 16px 0; line-height:1.4;">
-          Lưu họ tên và email hiển thị trên trình duyệt này để tự động điền khi ký tên số và đóng dấu tài liệu. Dữ liệu được lưu trữ an toàn trong máy của bạn (100% riêng tư).
+          Đăng nhập để sử dụng các tính năng cao cấp dành riêng cho nội bộ.
         </p>
 
-        <form id="auth-login-form">
+        <form id="auth-login-form" autocomplete="on">
           <div class="auth-form-group">
-            <label for="auth-input-user">Họ và tên / Tên hiển thị:</label>
-            <input type="text" id="auth-input-user" class="auth-input" placeholder="Ví dụ: Nguyễn Văn An" required autocomplete="name">
+            <label for="auth-input-user">Tên đăng nhập:</label>
+            <input type="text" id="auth-input-user" class="auth-input" required autocomplete="username" autocapitalize="none" spellcheck="false">
           </div>
 
           <div class="auth-form-group">
-            <label for="auth-input-email">Email liên hệ (tùy chọn):</label>
-            <input type="email" id="auth-input-email" class="auth-input" placeholder="Ví dụ: an.nguyen@gmail.com" autocomplete="email">
+            <label for="auth-input-pass">Mật khẩu:</label>
+            <input type="password" id="auth-input-pass" class="auth-input" required autocomplete="current-password">
           </div>
+
+          <div class="auth-error" id="auth-error" role="alert" style="display:none;"></div>
 
           <div class="auth-actions">
-            <button type="submit" class="auth-submit-btn">💾 Lưu Hồ Sơ</button>
+            <button type="submit" class="auth-submit-btn" id="auth-submit-btn">Đăng nhập</button>
             <button type="button" class="auth-demo-btn" id="auth-cancel-btn">Hủy</button>
           </div>
         </form>
@@ -148,27 +142,34 @@ export function openLoginModal() {
   document.getElementById('auth-cancel-btn')?.addEventListener('click', close);
   modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
 
-  const doSave = (uVal, eVal) => {
-    if (!uVal) {
-      toast('Vui lòng nhập họ và tên!', 'error');
+  document.getElementById('auth-login-form')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const uEl = document.getElementById('auth-input-user');
+    const pEl = document.getElementById('auth-input-pass');
+    const errEl = document.getElementById('auth-error');
+    const btn = document.getElementById('auth-submit-btn');
+    const u = (uEl?.value || '').trim();
+    const p = pEl?.value || '';
+
+    btn.disabled = true;
+    btn.textContent = 'Đang kiểm tra...';
+    errEl.style.display = 'none';
+
+    const result = await verifyLogin(u, p);
+
+    if (result && result.ok) {
+      saveUser(result.user || { username: u, displayName: u, role: 'user', savedAt: new Date().toISOString() });
+      close();
+      toast(`🎉 Đăng nhập thành công! Xin chào ${u}.`, 'success');
       return;
     }
-    saveUser({
-      username: uVal,
-      displayName: uVal,
-      email: eVal || `${uVal.toLowerCase().replace(/\s+/g, '.')}@local`,
-      role: 'user',
-      savedAt: new Date().toISOString()
-    });
-    close();
-    toast(`🎉 Đã lưu hồ sơ thành công! Xin chào ${uVal}.`, 'success');
-  };
 
-  document.getElementById('auth-login-form')?.addEventListener('submit', (e) => {
-    e.preventDefault();
-    const u = document.getElementById('auth-input-user')?.value.trim();
-    const em = document.getElementById('auth-input-email')?.value.trim();
-    doSave(u, em);
+    errEl.textContent = (result && result.error) || 'Sai tên đăng nhập hoặc mật khẩu.';
+    errEl.style.display = 'block';
+    errEl.classList.remove('shake'); void errEl.offsetWidth; errEl.classList.add('shake');
+    if (pEl) { pEl.value = ''; pEl.focus(); }
+    btn.disabled = false;
+    btn.textContent = 'Đăng nhập';
   });
 
   setTimeout(() => {
@@ -176,10 +177,29 @@ export function openLoginModal() {
   }, 100);
 }
 
+/**
+ * KIỂM TRA ĐĂNG NHẬP.
+ * Hiện tại LUÔN báo sai (chưa có hệ thống tài khoản).
+ * Sau này thay thân hàm này bằng gọi API thật, ví dụ:
+ *   const r = await fetch('/api/login', { method:'POST', headers:{'Content-Type':'application/json'},
+ *                                          body: JSON.stringify({ username, password }) });
+ *   const j = await r.json();
+ *   return j.ok ? { ok:true, user:{ username, displayName: j.name || username, role: j.role || 'user' } }
+ *               : { ok:false, error:'Sai tên đăng nhập hoặc mật khẩu.' };
+ * Lưu ý: KHÔNG kiểm tra mật khẩu bằng JavaScript phía trình duyệt (ai cũng đọc được), phải kiểm tra ở server.
+ */
+async function verifyLogin(username, password) {
+  await new Promise((r) => setTimeout(r, 400));
+  return { ok: false, error: 'Sai tên đăng nhập hoặc mật khẩu.' };
+}
+
 export function initAuth() {
   window.openLoginModal = openLoginModal;
   window.logoutUser = logoutUser;
   window.isUserLoggedIn = isLoggedIn;
+
+  // Bản cũ cho lưu hồ sơ bất kỳ; nay phải đăng nhập thật nên bỏ hồ sơ cũ còn sót trong trình duyệt
+  try { localStorage.removeItem(STORAGE_KEY); } catch (e) {}
 
   updateAuthUI();
 }
