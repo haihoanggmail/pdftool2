@@ -1,0 +1,94 @@
+/* ==========================================================================
+   GIAO DIỆN ĐIỆN THOẠI / MÁY TÍNH BẢNG (màn hình <= 900px)
+   Nguyên nhân lỗi cũ: bố cục desktop có cột trái cố định 320-400px + body cao đúng 100vh,
+   nên trên điện thoại (~360px) cột phải bị ép còn ~0px, chỉ thấy 1 góc bên trái.
+   File này nạp SAU CÙNG (xem src/main.js) nên ghi đè được các CSS khác.
+   ========================================================================== */
+@media (max-width: 900px) {
+  html { -webkit-text-size-adjust: 100%; }
+
+  /* Cho phép cuộn cả trang theo chiều dọc, không còn khóa cứng 100vh */
+  body {
+    height: auto !important;
+    min-height: 100vh;
+    min-height: 100dvh;
+    overflow-x: hidden;
+    display: block !important;
+  }
+
+  /* Thanh tab: dính trên cùng, vuốt ngang được */
+  .nav-tabs {
+    position: sticky; top: 0; z-index: 1000;
+    padding: 4px 6px 0 6px;
+    -webkit-overflow-scrolling: touch;
+  }
+  .tab-btn { padding: 10px 12px; font-size: 13px; }
+  .nav-menu { max-width: calc(100vw - 16px); }
+
+  /* Các tab: xếp dọc, không cắt nội dung */
+  .tab-content { overflow: visible !important; flex: none !important; }
+  .tab-content.active { display: block !important; }
+  .main-container {
+    display: flex !important;
+    flex-direction: column !important;
+    height: auto !important;
+    padding: 10px !important;
+    gap: 10px !important;
+  }
+  .left-panel,
+  #tab-merge .left-panel {
+    width: 100% !important;
+    flex-shrink: 1 !important;
+    overflow: visible !important;
+    padding-right: 0 !important;
+  }
+  .right-panel {
+    width: 100% !important;
+    flex: none !important;
+    min-height: 320px;
+    box-sizing: border-box;
+    padding: 10px !important;
+  }
+
+  /* Vùng xem trước / danh sách có chiều cao riêng, tự cuộn bên trong */
+  .grid-container { max-height: 70vh; gap: 10px !important; padding: 10px !important; }
+  .file-list { max-height: 50vh; }
+  .merge-list-card { flex: none !important; }
+  .merge-preview-area { min-height: 300px; max-height: 70vh; padding: 8px !important; }
+  .preview-header, .merge-list-head { flex-wrap: wrap; gap: 6px; }
+  .pagination-container { flex-wrap: wrap; gap: 8px !important; }
+
+  /* So sánh: hai khung xếp dọc */
+  .compare-view { flex-direction: column !important; height: auto !important; overflow: visible !important; }
+  .compare-pane { min-height: 45vh; max-height: 65vh; flex: none !important; }
+  .overlay-container { height: 65vh !important; }
+
+  /* Chỉnh sửa PDF (kiểu Word): ribbon vuốt ngang, trang cuộn trong khung */
+  #tab-editor, #tab-editor.active { height: calc(100vh - 46px) !important; height: calc(100dvh - 46px) !important; display: flex !important; }
+  .ribbon-tabs-bar, .ribbon-panels { overflow-x: auto !important; -webkit-overflow-scrolling: touch; }
+  .ribbon-panel.active { flex-wrap: nowrap; }
+  .ribbon-right-tools { display: none !important; }
+  .editor-layout { flex-direction: column; }
+  .editor-sidebar { width: 100% !important; max-height: 40vh; border-right: 0; border-bottom: 1px solid #d2d0ce; }
+  .editor-stage-scroll { padding: 8px !important; -webkit-overflow-scrolling: touch; }
+  .editor-pagebar { flex-wrap: wrap; justify-content: center; gap: 4px; }
+  #editor-empty { margin: 24px auto !important; padding: 20px !important; }
+
+  /* Giới thiệu */
+  .about-container { padding: 16px !important; flex-direction: column !important; gap: 16px; }
+
+  /* Thông báo + bảng phím tắt */
+  #toast-box { left: 8px; right: 8px; bottom: 8px; max-width: none; }
+
+  /* Dễ bấm bằng ngón tay; cỡ chữ 16px để trình duyệt không tự phóng to khi chạm ô nhập */
+  .btn { min-height: 42px; }
+  .btn-small { min-height: 36px; }
+  input[type="text"], input[type="number"], select, textarea { font-size: 16px !important; min-height: 38px; }
+  .inline-group { flex-wrap: wrap; }
+}
+
+/* Điện thoại nhỏ: lưới trang xem trước 1 cột lớn cho dễ nhìn */
+@media (max-width: 480px) {
+  .grid-container { grid-template-columns: 1fr !important; }
+  .tab-btn { padding: 9px 10px; font-size: 12.5px; }
+}
