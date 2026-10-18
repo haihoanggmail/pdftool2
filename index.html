@@ -275,10 +275,12 @@
                 <div class="preview-header">
                     <span style="font-weight: bold; color: var(--primary);">KHUNG ĐỐI CHIẾU THÔNG MINH</span>
                     <div class="hv-bar" style="margin-left:auto;">
-                        <button type="button" class="btn btn-small" onclick="cmpZoomBy(1/1.2)" title="Thu nhỏ (Ctrl + cuộn xuống)">➖</button>
-                        <span class="hv-zl" id="cmp-zoom-label">98%</span>
-                        <button type="button" class="btn btn-small" onclick="cmpZoomBy(1.2)" title="Phóng to (Ctrl + cuộn lên)">➕</button>
-                        <button type="button" class="btn btn-small" onclick="cmpZoomFit()" title="Vừa chiều ngang khung">↔ Vừa khung</button>
+                        <button type="button" class="btn btn-small" onclick="cmpZoomStep(-1)" title="Thu nhỏ (Ctrl + cuộn xuống)">➖</button>
+                        <span class="hv-zl" id="cmp-zoom-label">100%</span>
+                        <button type="button" class="btn btn-small" onclick="cmpZoomStep(1)" title="Phóng to (Ctrl + cuộn lên)">➕</button>
+                        <button type="button" class="btn btn-small" onclick="cmpZoomFit()" title="Vừa chiều rộng khung">↔ Vừa chiều rộng</button>
+                        <button type="button" class="btn btn-small" onclick="cmpZoomPage()" title="Cả trang nằm gọn trong khung">⛶ Vừa trang</button>
+                        <button type="button" class="btn btn-small" onclick="cmpZoom100()" title="Kích thước thật (100%)">100%</button>
                     </div>
                 </div>
                 <div class="compare-view" id="compare-view-container" style="height: 100%;">
@@ -313,7 +315,9 @@
                     <button class="btn btn-small btn-tool" onclick="editorZoomBy(-1)" title="Thu nhỏ">➖</button>
                     <span id="editor-zoom-label" style="font-weight:bold; min-width:44px; text-align:center;">100%</span>
                     <button class="btn btn-small btn-tool" onclick="editorZoomBy(1)" title="Phóng to">➕</button>
-                    <button class="btn btn-small btn-tool" onclick="editorZoomFit()" title="Vừa chiều ngang khung">↔ Vừa khung</button>
+                    <button class="btn btn-small btn-tool" onclick="editorZoomFit()" title="Vừa chiều rộng khung">↔ Vừa chiều rộng</button>
+                    <button class="btn btn-small btn-tool" onclick="editorZoomPage()" title="Cả trang nằm gọn trong khung">⛶ Vừa trang</button>
+                    <button class="btn btn-small btn-tool" onclick="editorZoom100()" title="Kích thước thật (100%)">100%</button>
                 </div>
 				
                 <div class="editor-stage-scroll">
@@ -399,6 +403,7 @@
                 <div id="w2d-progress-wrap" style="display:none; margin-top:10px;">
                     <div style="height:8px; background:#e1dfdd; border-radius:4px; overflow:hidden;"><div id="w2d-progress-bar" style="height:100%; width:0; background:var(--success); transition:width .2s;"></div></div>
                     <div id="w2d-status" class="editor-hint" style="margin-top:4px;"></div>
+                    <button type="button" id="w2d-cancel-btn" class="btn btn-small" style="display:none; margin-top:6px; background:#dc2626; color:#fff; border-color:#dc2626;" title="Dừng tác vụ và giải phóng bộ nhớ">⏹ Hủy</button>
                 </div>
             </div>
         </div>
@@ -473,6 +478,7 @@
                 <div id="w2x-progress-wrap" style="display:none; margin-top:10px;">
                     <div style="height:8px; background:#e1dfdd; border-radius:4px; overflow:hidden;"><div id="w2x-progress-bar" style="height:100%; width:0; background:var(--success); transition:width .2s;"></div></div>
                     <div id="w2x-status" class="editor-hint" style="margin-top:4px;"></div>
+                    <button type="button" id="w2x-cancel-btn" class="btn btn-small" style="display:none; margin-top:6px; background:#dc2626; color:#fff; border-color:#dc2626;" title="Dừng tác vụ và giải phóng bộ nhớ">⏹ Hủy</button>
                 </div>
             </div>
         </div>
@@ -866,6 +872,8 @@
                         <select id="tl-ocr-lang" class="tl-in"><option value="vie+eng" selected>Tiếng Việt + Tiếng Anh</option><option value="vie">Tiếng Việt</option><option value="eng">Tiếng Anh</option></select>
                         <label class="tl-lb">Độ phân giải quét:</label>
                         <select id="tl-ocr-dpi" class="tl-in"><option value="150">150 DPI (nhanh)</option><option value="200" selected>200 DPI (cân bằng)</option><option value="300">300 DPI (chính xác, chậm)</option></select>
+                        <label class="tl-lb">Xử lý ảnh trước khi nhận dạng:</label>
+                        <select id="tl-ocr-prep" class="tl-in"><option value="auto" selected>Tự động làm rõ ảnh scan mờ (khuyên dùng)</option><option value="off">Giữ nguyên ảnh</option></select>
                         <label class="tl-lb">Kết quả:</label>
                         <select id="tl-ocr-out" class="tl-in"><option value="pdf">PDF tìm kiếm được (giữ nguyên hình ảnh gốc)</option><option value="txt">Chỉ file văn bản .txt</option><option value="both">Cả hai</option></select>
                         <label class="tl-lb">Trang cần OCR (trống = tất cả):</label>
@@ -999,6 +1007,7 @@
                 <div id="tl-progress-wrap" style="display:none; margin-top:10px;">
                     <div style="height:8px; background:#e1dfdd; border-radius:4px; overflow:hidden;"><div id="tl-progress-bar" style="height:100%; width:0; background:var(--success); transition:width .2s;"></div></div>
                     <div id="tl-status" class="editor-hint" style="margin-top:4px;"></div>
+                    <button type="button" id="tl-cancel-btn" class="btn btn-small" style="display:none; margin-top:6px; background:#dc2626; color:#fff; border-color:#dc2626;" title="Dừng tác vụ và giải phóng bộ nhớ">⏹ Hủy</button>
                 </div>
             </div>
         </div>
@@ -1029,20 +1038,15 @@
             <p style="font-style:italic;
                       color:var(--primary-hover);
                       margin-bottom:10px;">
-                Phiên bản V020726, <b>🎉 Miễn phí 100% cho mọi người</b>, tính năng cao cấp được thiết kế riêng cho nội bộ, cần đăng nhập để sử dụng - Support: 09-1800-1944
+                Phiên bản V020726, <b>🎉 Miễn phí 100% cho mọi người</b>, tính năng cao cấp được thiết kế riêng cho nội bộ, cần đăng nhập để sử dụng - Hỗ trợ kỹ thuật: Hải Hoàng 09-1800-1944
             </p>
 
             <p style="font-size:13px;">
-                🔐 File PDF được xử lý ngay trên máy bạn, không tải lên bất kỳ máy chủ nào.
-               
-				<!--
-				Ứng dụng có thống kê lượt sử dụng (không có nội dung file). Để không thống kê hãy chọn 
+                🔐 File PDF được xử lý ngay trên máy bạn, không tải lên máy chủ.
+                Ứng dụng ghi thống kê sử dụng: thao tác, tab đã mở, tên file, IP/khu vực gần đúng, trình duyệt (không có nội dung file).
                 <label style="display:inline-flex; align-items:center; gap:6px; margin-left:6px; cursor:pointer;">
                     <input type="checkbox" id="no-log-chk"> Không gửi thống kê
                 </label>
-
-				-->
-				
             </p>
 
             <hr style="border:0;
@@ -1095,12 +1099,6 @@
 
             </ul>
 
- 	 </div>  
-		
-
-<!-- Khung chứa bên ngoài để chia 2 cột -->
-<div style="display: flex; gap: 16px; width: 100%; align-items: stretch;">
-	
             <div class="card" style="width:100%; max-width:none; box-sizing:border-box; margin-top:12px;">
                 <p class="card-title">📴 Dùng khi không có mạng</p>
                 <p class="editor-hint" id="off-info"></p>
@@ -1108,7 +1106,7 @@
                 <div id="off-status" class="editor-hint" style="margin-top:4px;"></div>
             </div>
 
-    
+        </div>
 
         <div class="about-form" style="width:100%; margin-top:10px;">
             <div id="feedback-box" style="text-align:center; padding:24px; border:1px solid #d2d0ce; border-radius:8px; background:#fff;">
@@ -1119,9 +1117,6 @@
                 </a>
             </div>
         </div>
-			</div>
-
-		
 
     </div>
 
@@ -1166,6 +1161,7 @@
 })();
 </script>
 <script src="legacy/00-fonts-meta.js"></script>
+<script src="legacy/05-core-utils.js"></script>
 <script src="legacy/10-core.js"></script>
 <script src="legacy/20-a.js"></script>
 <script src="legacy/30-b.js"></script>
@@ -1178,6 +1174,7 @@
 <script src="legacy/91-i18n-b.js"></script>
 <script src="legacy/92-i18n-ribbon.js"></script>
 <script src="legacy/93-i18n-ui.js"></script>
+<script src="legacy/94-i18n-v2.js"></script>
 <script src="legacy/95-multipage.js"></script>
 <script src="legacy/96-editor-sig.js"></script>
 <script src="legacy/97-viewer.js"></script>
