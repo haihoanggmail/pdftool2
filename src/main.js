@@ -2,6 +2,7 @@ import './styles/ux.css';
 import './styles/word-ribbon.css';
 import './styles/auth.css';
 import './styles/mobile.css';
+import './styles/a11y.css';
 import { initSign } from './features/sign.js';
 import { initForm } from './features/form.js';
 import { initRedact } from './features/redact.js';
