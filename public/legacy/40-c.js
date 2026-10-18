@@ -180,6 +180,7 @@ def w2x_extract(opts_json):
     if not pages: pages = list(range(doc.page_count))
     res = []
     blobs = {}
+    warns = []
     budget = [14000000]
     for pn in pages:
         if pn < 0 or pn >= doc.page_count: continue
@@ -219,8 +220,8 @@ def w2x_extract(opts_json):
         tables = []
         try:
             for t in page.find_tables(strategy='lines').tables: tables.append((t, True))
-        except Exception:
-            pass
+        except Exception as ex_:
+            warns.append('Trang %d: không dò được bảng có đường viền (%s)' % (pn + 1, str(ex_)[:90]))
         if opts.get('stream'):
             try:
                 for t in page.find_tables(strategy='text').tables:
@@ -228,8 +229,8 @@ def w2x_extract(opts_json):
                         tb = tuple(t.bbox); ar = max(1, (tb[2] - tb[0]) * (tb[3] - tb[1]))
                         if all(_inter(tb, tuple(o.bbox)) / min(ar, max(1, (o.bbox[2] - o.bbox[0]) * (o.bbox[3] - o.bbox[1]))) < 0.5 for o, _ in tables):
                             tables.append((t, False))
-            except Exception:
-                pass
+            except Exception as ex_:
+                warns.append('Trang %d: không dò được bảng không viền (%s)' % (pn + 1, str(ex_)[:90]))
         items = []
         tbboxes = []
         for t, bordered in tables:
@@ -308,7 +309,7 @@ def w2x_extract(opts_json):
             except Exception: images = []
         res.append({'page': pn + 1, 'w': pr.width, 'h': pr.height, 'items': items, 'images': images, 'hasText': len(lines) > 0})
     doc.close()
-    return json.dumps({'pages': res, 'blobs': blobs})
+    return json.dumps({'pages': res, 'blobs': blobs, 'warns': warns})
 `;
     const WORKER_SRC = `
 let inst = null, py = null;
@@ -342,9 +343,6 @@ self.onmessage = async (ev) => {
     let worker = null, loadPromise = null, loadedBase = '';
     const listeners = new Set();
     let items = [], seq = 0, busy = false;
-    let cancelled = false, activeReject = null, tickTimer = null, progressBase = '';
-    const IDLE_MS = 3 * 60 * 1000;                 // sau 3 phút không dùng: giải phóng bộ chuyển đổi
-    const BIG_BYTES = 40 * 1048576;                // file >= 40 MB: giải phóng ngay sau khi xong
     const $ = id => document.getElementById(id);
     const fmtBytes = n => n > 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB';
     const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -352,36 +350,7 @@ self.onmessage = async (ev) => {
     function setProgress(pct, msg) {
         $('w2x-progress-wrap').style.display = 'block';
         if (pct !== null && pct !== undefined) $('w2x-progress-bar').style.width = Math.max(0, Math.min(100, pct)) + '%';
-        if (msg !== undefined) { progressBase = msg; $('w2x-status').textContent = msg; }
-    }
-
-    // Đồng hồ thời gian đã chạy: cho thấy tác vụ vẫn hoạt động khi file lớn ít thông báo
-    function startTicker() {
-        stopTicker();
-        const t0 = performance.now();
-        tickTimer = setInterval(() => {
-            const el = $('w2x-status');
-            if (!el || !busy) return;
-            el.textContent = (progressBase ? progressBase + ' • ' : '') + 'đã chạy ' + PDFJob.fmtTime(performance.now() - t0);
-        }, 1000);
-    }
-    function stopTicker() { if (tickTimer) { clearInterval(tickTimer); tickTimer = null; } }
-
-    // Tắt hẳn tiến trình nền để trả lại RAM (WebAssembly không tự co lại)
-    function releaseEngine() {
-        if (worker) { try { worker.terminate(); } catch (e) {} }
-        worker = null; loadPromise = null; loadedBase = '';
-        listeners.clear();
-    }
-    const idleRelease = PDFJob.idle(() => { if (!busy) releaseEngine(); }, IDLE_MS);
-
-    function cancelRun() {
-        if (!busy || cancelled) return;
-        cancelled = true;
-        stopTicker();
-        setProgress(null, 'Đang hủy...');
-        releaseEngine();
-        if (activeReject) { const r = activeReject; activeReject = null; r(PDFJob.cancelError()); }
+        if (msg !== undefined) $('w2x-status').textContent = msg;
     }
 
     function ensureEngine() {
@@ -536,9 +505,7 @@ self.onmessage = async (ev) => {
     };
 
     function styleCell(cell, c, numMode, numStyle, border) {
-        // Font lạ (không có sẵn trong Office) đổi sang font cùng kiểu (có chân / không chân / đơn cách) thay vì rơi về Calibri
-        const fm = (window.PDFFonts && c.font) ? PDFFonts.forExcel(c.font) : { name: c.font || 'Calibri', family: 2 };
-        const f = { name: fm.name, family: fm.family, size: Math.max(6, Math.min(72, c.size || 11)), bold: !!c.bold, italic: !!c.italic };
+        const f = { name: c.font || 'Calibri', size: Math.max(6, Math.min(72, c.size || 11)), bold: !!c.bold, italic: !!c.italic };
         if (c.color) f.color = { argb: argb(c.color) };
         cell.font = f;
         cell.alignment = { horizontal: c.h || 'left', vertical: c.v || 'middle', wrapText: /\n/.test(c.text || '') || (c.cs || 1) > 0 && (c.wrap !== false) };
@@ -873,7 +840,7 @@ self.onmessage = async (ev) => {
                 row.innerHTML = '<div style="flex:1; min-width:0;"><div style="font-weight:600; font-size:13px; word-break:break-all;">' + esc(it.file.name) + '</div>' +
                     '<div style="font-size:11px; color:#605e5c;">' + fmtBytes(it.file.size) + (it.numPages ? ' • ' + it.numPages + ' trang' : '') + '</div>' +
                     '<div style="font-size:12px; margin-top:3px; color:' + colors[it.status] + ';">' + esc(it.text || '') + '</div>' +
-                    (it.warn ? '<div style="font-size:11px; color:#b45309; margin-top:2px;">⚠ ' + esc(it.warn) + '</div>' : '') + '</div>';
+                    (it.warn ? '<div style="font-size:11px; color:#b45309; margin-top:2px;">⚠ ' + esc(it.warn) + '</div>' : '') + (window.PdfConvertAnalysis ? window.PdfConvertAnalysis.rowHtml(it) : '') + '</div>';
                 const act = document.createElement('div');
                 act.style.cssText = 'display:flex; gap:6px; flex-shrink:0;';
                 if (it.pagesData && it.pagesData.some(p => p.items && p.items.some(i => i.type === 'table'))) {
@@ -905,7 +872,6 @@ self.onmessage = async (ev) => {
             });
         }
         $('w2x-run-btn').disabled = busy || !items.length;
-        const cb = $('w2x-cancel-btn'); if (cb) cb.style.display = busy ? 'inline-flex' : 'none';
         $('w2x-zip-btn').style.display = items.filter(i => i.blob).length > 1 ? 'flex' : 'none';
         $('w2x-clear-btn').style.display = items.length && !busy ? 'flex' : 'none';
     }
@@ -1014,30 +980,25 @@ self.onmessage = async (ev) => {
         for (const f of files) {
             const it = { id: ++seq, file: f, status: 'wait', text: 'Chờ chuyển đổi' };
             items.push(it);
-            let pdf = null;
             try {
-                pdf = await pdfjsLib.getDocument({ data: new Uint8Array(await f.arrayBuffer()) }).promise;
+                const buf = await f.arrayBuffer();
+                const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(buf.slice(0)) }).promise;
                 it.numPages = pdf.numPages;
-                if (f.size >= BIG_BYTES || pdf.numPages > 150) {
-                    it.big = true;
-                    it.warn = 'File lớn (' + fmtBytes(f.size) + ', ' + pdf.numPages + ' trang): có thể mất vài phút. Nên nhập khoảng trang (ví dụ 1-50) để chuyển từng phần; bấm Hủy bất cứ lúc nào.';
+                if (window.PdfConvertAnalysis) {
+                    it.text = 'Đang kiểm tra các trang...'; render();
+                    it.analysis = await window.PdfConvertAnalysis.analyze(pdf, {
+                        onProgress: (p, n) => { if (p % 10 === 0) { it.text = 'Đang kiểm tra trang ' + p + '/' + n + '...'; render(); } }
+                    });
+                    it.pre = window.PdfConvertAnalysis.verdict(it.analysis, 'excel');
+                    it.text = 'Chờ chuyển đổi';
+                    if (it.pre.needOcr) {
+                        const ocrHint = $('w2x-ocr-hint');
+                        if (ocrHint) ocrHint.style.display = 'block';
+                    }
                 }
-                let chars = 0;
-                for (let p = 1; p <= Math.min(3, pdf.numPages); p++) {
-                    const pg = await pdf.getPage(p);
-                    const tc = await pg.getTextContent();
-                    tc.items.forEach(x => { chars += (x.str || '').trim().length; });
-                    pg.cleanup();
-                }
-                if (!chars) {
-                    it.warn = 'PDF này có vẻ là bản scan (không có chữ thật) nên không trích được bảng. Hãy chạy Chuyển đổi → OCR trước.';
-                    const ocrHint = $('w2x-ocr-hint');
-                    if (ocrHint) ocrHint.style.display = 'block';
-                }
+                try { pdf.destroy(); } catch (e) {}
             } catch (e) {
                 it.warn = 'Không đọc được thông tin file (có thể bị đặt mật khẩu).';
-            } finally {
-                if (pdf) { try { await pdf.destroy(); } catch (e) {} }
             }
             render();
         }
@@ -1054,7 +1015,6 @@ self.onmessage = async (ev) => {
             };
             listeners.add(fn);
             it.file.arrayBuffer().then(buf => {
-                if (!worker) { listeners.delete(fn); reject(PDFJob.cancelError()); return; }
                 const pages = parsePages($('w2x-pages').value, it.numPages);
                 if (pages && !pages.length) { listeners.delete(fn); reject(new Error('Khoảng trang không hợp lệ.')); return; }
                 worker.postMessage({ type: 'extract', id: it.id, bytes: buf, opts: { pages: pages, stream: $('w2x-stream').checked, images: $('w2x-img') ? $('w2x-img').checked : true, render: $('w2x-mode').value === 'image', dpi: 150 } }, [buf]);
@@ -1062,28 +1022,61 @@ self.onmessage = async (ev) => {
         });
     }
 
+    // ---------- Báo cáo chất lượng sau khi chuyển ----------
+    function buildExcelReport(it, pages, out, ex, mode) {
+        const A = window.PdfConvertAnalysis;
+        if (!A) return null;
+        const lines = [];
+        let level = 'ok';
+        const bump = l => { if (l === 'bad' || (l === 'warn' && level === 'ok')) level = l; };
+        const textLines = pages.reduce((n, p) => n + (p.items || []).filter(i => i.type === 'text').length, 0);
+        lines.push('Trong file Excel: ' + out.sheets + ' sheet • ' + out.tables + ' bảng • ' + textLines + ' dòng chữ' + (out.images ? ' • ' + out.images + ' ảnh' : '') + ' (từ ' + pages.length + ' trang).');
+
+        if (mode !== 'image') {
+            const noContent = pages.filter(p => !(p.items && p.items.length) && !(p.images && p.images.length)).map(p => p.page);
+            const imgOnly = pages.filter(p => !(p.items && p.items.length) && p.images && p.images.length).map(p => p.page);
+            if (noContent.length) {
+                bump(noContent.length === pages.length ? 'bad' : 'warn');
+                lines.push('Trang ' + A.ranges(noContent) + ' không có chữ hay bảng để đưa vào Excel (thường là bản scan hoặc hình).');
+            }
+            if (imgOnly.length) {
+                bump('warn');
+                lines.push('Trang ' + A.ranges(imgOnly) + ' chỉ có hình nên được chèn dạng ảnh, không có dữ liệu để chỉnh sửa.');
+            }
+            if (!out.tables) {
+                bump('warn');
+                lines.push('Không dò được bảng nào, chữ được xếp theo vị trí.' + (mode === 'page' ? ' Thử bật "Dò cả bảng không có đường viền".' : ''));
+            }
+        }
+        const warns = (ex && ex.warns) || [];
+        warns.slice(0, 5).forEach(w => { bump('warn'); lines.push(w); });
+        if (warns.length > 5) lines.push('(và ' + (warns.length - 5) + ' cảnh báo khác)');
+
+        if (it.analysis) {
+            const got = new Set(pages.map(p => p.page));
+            const bad = it.analysis.pages.filter(p => got.has(p.n) && (p.cls === 'garbled' || p.cls === 'legacy')).map(p => p.n);
+            if (bad.length) { bump('bad'); lines.push('Trang ' + A.ranges(bad) + ' có chữ loạn mã hoặc font cũ: hãy kiểm tra kỹ nội dung trong Excel.'); }
+        }
+        if (level === 'ok') lines.push('Đã dựng bảng và chữ. Nên mở file đối chiếu số liệu quan trọng với PDF gốc.');
+        return { level: level, lines: lines };
+    }
+
     async function run() {
         if (busy || !items.length) return;
-        busy = true; cancelled = false;
-        idleRelease.disarm();
+        busy = true;
         render();
-        let ok = 0, bigSeen = false;
-        const gate = new Promise((_, rej) => { activeReject = rej; });
-        gate.catch(() => {});
-        startTicker();
+        let ok = 0;
         try {
             setProgress(0, 'Đang tải bộ chuyển đổi (lần đầu ~55 MB, các lần sau nhanh hơn)...');
-            await Promise.race([ensureEngine(), gate]);
+            await ensureEngine();
             for (let i = 0; i < items.length; i++) {
-                if (cancelled) break;
                 const it = items[i];
                 if (it.blob) continue;
-                if (it.big) bigSeen = true;
                 it.status = 'run'; it.text = 'Đang đọc bảng và định dạng...';
                 render();
                 setProgress(0, 'Đang chuyển ' + it.file.name + ' (' + (i + 1) + '/' + items.length + ')...');
                 try {
-                    const ex = await Promise.race([extractOne(it), gate]);
+                    const ex = await extractOne(it);
                     const pages = ex.pages;
                     it.pagesData = pages;
                     setProgress(100, 'Đang tạo file Excel cho ' + it.file.name + '...');
@@ -1091,31 +1084,22 @@ self.onmessage = async (ev) => {
                     if (!out) { it.status = 'err'; it.text = 'Không tìm thấy bảng hoặc chữ nào để đưa vào Excel.'; render(); continue; }
                     it.blob = out.blob;
                     it.name = it.file.name.replace(/\.pdf$/i, '') + '.xlsx';
+                    try { it.report = buildExcelReport(it, pages, out, ex, $('w2x-mode').value); } catch (e) { console.warn('Không tạo được báo cáo chất lượng:', e); it.report = null; }
                     it.status = 'ok'; it.text = 'Xong • ' + out.sheets + ' sheet • ' + out.tables + ' bảng' + (out.images ? ' • ' + out.images + ' ảnh' : '') + ' • ' + fmtBytes(out.blob.size);
-                    if (!out.tables && $('w2x-mode').value === 'page') it.warn = 'Không có bảng có đường viền, chữ được xếp theo vị trí. Thử bật "Dò cả bảng không có đường viền".';
                     ok++;
                     if (typeof logAction === 'function') logAction('pdf_to_excel');
                     if (items.length === 1) dl(it);
                 } catch (e) {
-                    if (cancelled || PDFJob.isCancel(e)) { it.status = 'wait'; it.text = 'Đã hủy — bấm Chuyển đổi để chạy lại'; break; }
                     it.status = 'err'; it.text = 'Lỗi: ' + (e.message || e);
                 }
                 render();
             }
-            if (cancelled) setProgress(0, 'Đã hủy. Bộ nhớ đã được giải phóng.');
-            else setProgress(100, ok ? 'Hoàn tất: đã chuyển ' + ok + ' file.' : 'Không chuyển được file nào.');
+            setProgress(100, ok ? 'Hoàn tất: đã chuyển ' + ok + ' file.' : 'Không chuyển được file nào.');
         } catch (e) {
-            if (cancelled || PDFJob.isCancel(e)) {
-                setProgress(0, 'Đã hủy. Bộ nhớ đã được giải phóng.');
-            } else {
-                setProgress(0, 'Không tải được bộ chuyển đổi: ' + (e.message || e) + '. Kiểm tra kết nối mạng hoặc địa chỉ nguồn ở mục Nâng cao.');
-            }
-            items.forEach(it => { if (it.status === 'run') { it.status = cancelled ? 'wait' : 'err'; it.text = cancelled ? 'Đã hủy — bấm Chuyển đổi để chạy lại' : 'Chưa chuyển được'; } });
+            setProgress(0, 'Không tải được bộ chuyển đổi: ' + (e.message || e) + '. Kiểm tra kết nối mạng hoặc địa chỉ nguồn ở mục Nâng cao.');
+            items.forEach(it => { if (it.status === 'run') { it.status = 'err'; it.text = 'Chưa chuyển được'; } });
         } finally {
-            stopTicker();
-            activeReject = null;
             busy = false;
-            if (cancelled || bigSeen) releaseEngine(); else idleRelease.arm();
             render();
         }
     }
@@ -1139,9 +1123,8 @@ self.onmessage = async (ev) => {
         if (!inp) return;
         inp.addEventListener('change', () => { addFiles(inp.files); inp.value = ''; });
         $('w2x-run-btn').addEventListener('click', run);
-        if ($('w2x-cancel-btn')) $('w2x-cancel-btn').addEventListener('click', cancelRun);
         $('w2x-zip-btn').addEventListener('click', zipAll);
-        $('w2x-clear-btn').addEventListener('click', () => { items = []; idleRelease.arm(); $('w2x-progress-wrap').style.display = 'none'; if ($('w2x-ocr-hint')) $('w2x-ocr-hint').style.display = 'none'; render(); });
+        $('w2x-clear-btn').addEventListener('click', () => { items = []; $('w2x-progress-wrap').style.display = 'none'; if ($('w2x-ocr-hint')) $('w2x-ocr-hint').style.display = 'none'; render(); });
         const drop = $('w2x-drop');
         drop.addEventListener('dragover', e => { e.preventDefault(); drop.style.outline = '2px dashed var(--primary)'; });
         drop.addEventListener('dragleave', () => { drop.style.outline = ''; });
