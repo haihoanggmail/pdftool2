@@ -13,8 +13,14 @@ function doAttr(el){if(!el.getAttribute||(el.closest&&el.closest(NOTR)))return;[
 function walk(root){if(root.nodeType===3){doText(root);return}if(root.nodeType!==1)return;doAttr(root);for(var c=root.firstChild;c;c=c.nextSibling)walk(c)}
 function restore(root){var w=document.createTreeWalker(root,4),n;while(n=w.nextNode()){var r=recT.get(n);if(r&&n.nodeValue===r.t){n.nodeValue=r.o;recT.delete(n)}}
  root.querySelectorAll('[title],[placeholder],[aria-label]').forEach(function(el){var m=recA.get(el);if(!m)return;for(var a in m)if(el.getAttribute(a)===m[a].t)el.setAttribute(a,m[a].o);recA.delete(el)})}
+// Gói dịch lớn (~180 KB) chỉ tải khi người dùng chọn ngôn ngữ khác tiếng Việt (tiếng Việt là ngôn ngữ nguồn nên không cần)
+var PACKS=['legacy/90-i18n-a.js','legacy/91-i18n-b.js','legacy/92-i18n-ribbon.js','legacy/93-i18n-ui.js','legacy/94-i18n-v2.js'],packsP=null;
+function loadPacks(){if(!packsP)packsP=Promise.all(PACKS.map(function(u){return new Promise(function(res){var s=document.createElement('script');s.src=u;s.async=false;s.onload=s.onerror=function(){res()};document.head.appendChild(s)})}));return packsP}
 function setLang(l){if(!LANGS.some(function(x){return x[0]===l}))l='vi';try{localStorage.setItem('pdftool-lang',l)}catch(e){}
- busy=true;restore(document.body);cur=l;document.documentElement.lang=l;if(l!=='vi')walk(document.body);busy=false;var s=document.getElementById('lang-select');if(s)s.value=l;
+ var s0=document.getElementById('lang-select');if(s0)s0.value=l;
+ if(l!=='vi'&&!packsP){document.documentElement.lang=l;loadPacks().then(function(){applyLang(l)});return}
+ applyLang(l)}
+function applyLang(l){busy=true;restore(document.body);cur=l;document.documentElement.lang=l;if(l!=='vi')walk(document.body);busy=false;var s=document.getElementById('lang-select');if(s)s.value=l;
  if(window.applyTheme)applyTheme(document.documentElement.getAttribute('data-theme')||'light')}
 ['alert','confirm'].forEach(function(f){var o=window[f];window[f]=function(m){var t=cur!=='vi'&&typeof m==='string'?tr(m):null;return o.call(window,t||m)}});
 function init(){var bar=document.getElementById('theme-toggle'),s=document.createElement('select');s.id='lang-select';s.title='Language / Ngôn ngữ';s.setAttribute('aria-label','Language');
