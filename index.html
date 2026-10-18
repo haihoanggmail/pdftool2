@@ -65,7 +65,7 @@
         <div class="menu-sep" style="color:var(--primary); font-weight:bold;">⚡ Tự động hóa liên hoàn</div>
         <button class="menu-item" style="color:var(--primary); font-weight:bold;" onclick="switchTab('tab-tools', this); toolsSelect('pipeline')">⚡ Chuỗi liên hoàn (Nhiều bước 1 lần)</button>
         <div class="menu-sep">Biểu mẫu &amp; Bảo mật</div>
-        <button class="menu-item" onclick="switchTab('tab-sign', this)">✍️ Ký tên PDF (Chữ ký điện tử / vẽ / ảnh)</button>
+        <button class="menu-item" onclick="switchTab('tab-sign', this)">✍️ Ký tên PDF (Chữ ký tay/ vẽ / ảnh)</button>
         <button class="menu-item" onclick="switchTab('tab-form', this)">📝 Điền form PDF (AcroForm)</button>
         <button class="menu-item" onclick="switchTab('tab-redact', this)">🛡️ Che thông tin nhạy cảm (Redact)</button>
         <button class="menu-item" onclick="switchTab('tab-tools', this); toolsSelect('protect')">🔒 Đặt / gỡ mật khẩu</button>
@@ -1057,7 +1057,10 @@
 
             <p style="font-size:13px;">
                 🔐 File PDF được xử lý ngay trên máy bạn, không tải lên máy chủ.
-  
+                Ứng dụng ghi thống kê sử dụng: thao tác, tab đã mở, tên file, IP/khu vực gần đúng, trình duyệt (không có nội dung file).
+                <label style="display:inline-flex; align-items:center; gap:6px; margin-left:6px; cursor:pointer;">
+                    <input type="checkbox" id="no-log-chk"> Không gửi thống kê
+                </label>
             </p>
 
             <hr style="border:0;
@@ -1110,6 +1113,7 @@
 
             </ul>
 
+		
  	 </div>  
 		
 
@@ -1135,8 +1139,6 @@
             </div>
         </div>
 			</div>
-
-			
 
     </div>
 
