@@ -3,7 +3,15 @@
 import '../styles/redact.css';
 import { $, addTab, toast, log, download } from './ui.js';
 
-const st = { pdf: null, bytes: null, name: '', pages: 0, cur: 1, zoom: 1, rects: [], sel: null, token: 0 };
+const st = { pdf: null, bytes: null, name: '', pages: 0, cur: 1, mode: 'width', scale: 96 / 72, rects: [], sel: null, token: 0 };
+// Quy ước zoom dùng chung (PDFZoom): 100% = kích thước thật; Vừa chiều rộng / Vừa trang tính theo khung hiện tại
+const calcScale = (base, stage) => {
+  const Z = window.PDFZoom, aw = stage.clientWidth - 32, ah = stage.clientHeight - 32;
+  if (st.mode === 'page') return Z.fitPage(base.width, base.height, aw, ah);
+  if (st.mode === 'actual') return Z.actual();
+  if (st.mode === 'zoom') return Z.clamp(st.scale);
+  return Z.fitWidth(base.width, aw);
+};
 let uid = 1;
 
 const PRESETS = {
@@ -37,7 +45,7 @@ const HTML = `
   <div class="rd-right">
     <div class="rd-bar"><button class="rd-btn" id="rd-prev">◀</button><span id="rd-pageinfo">0 / 0</span><button class="rd-btn" id="rd-next">▶</button>
       <button class="rd-btn" id="rd-zout">－</button><span id="rd-zinfo">100%</span><button class="rd-btn" id="rd-zin">＋</button>
-      <button class="rd-btn" id="rd-zfit" title="Vừa chiều ngang khung">↔ Vừa ngang</button><button class="rd-btn" id="rd-zpage" title="Vừa cả trang trong khung">⛶ Vừa trang</button></div>
+      <button class="rd-btn" id="rd-zfit" title="Vừa chiều rộng khung">↔ Vừa chiều rộng</button><button class="rd-btn" id="rd-zpage" title="Vừa cả trang trong khung">⛶ Vừa trang</button><button class="rd-btn" id="rd-z100" title="Kích thước thật (100%)">100%</button></div>
     <div class="rd-stage" id="rd-stage"><div class="rd-empty">Mở một file PDF để bắt đầu</div></div>
   </div>
 </div>`;
@@ -47,7 +55,7 @@ async function openBytes(bytes, displayName, fromEditor) {
     window.Progress?.show('Đang mở PDF...');
     st.bytes = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
     st.pdf = await window.pdfjsLib.getDocument({ data: st.bytes.slice(0), isEvalSupported: false }).promise;
-    st.name = displayName.replace(/\.pdf$/i, ''); st.pages = st.pdf.numPages; st.cur = 1; st.rects = []; st.sel = null; st.zoom = 1;
+    st.name = displayName.replace(/\.pdf$/i, ''); st.pages = st.pdf.numPages; st.cur = 1; st.rects = []; st.sel = null; st.mode = 'width';
     st.fromEditor = !!fromEditor;
     const back = $('#rd-back'); if (back) back.style.display = fromEditor ? '' : 'none';
     $('#rd-info').textContent = `${displayName} · ${st.pages} trang` + (fromEditor ? ' (từ trình Chỉnh sửa)' : ''); $('#rd-found').textContent = '';
@@ -91,7 +99,8 @@ async function gotoRect(id) {
 async function renderPage() {
   if (!st.pdf) return; const tk = ++st.token;
   const page = await st.pdf.getPage(st.cur), stage = $('#rd-stage');
-  const base = page.getViewport({ scale: 1 }), scale = Math.min(1.6, Math.max(0.4, (stage.clientWidth - 32) / base.width)) * st.zoom, vp = page.getViewport({ scale });
+  const base = page.getViewport({ scale: 1 }), scale = calcScale(base, stage), vp = page.getViewport({ scale });
+  st.scale = scale;
   const dpr = window.devicePixelRatio || 1, holder = document.createElement('div'); holder.className = 'rd-page';
   holder.style.width = vp.width + 'px'; holder.style.height = vp.height + 'px';
   const cv = document.createElement('canvas'); cv.width = vp.width * dpr; cv.height = vp.height * dpr; cv.style.width = vp.width + 'px'; cv.style.height = vp.height + 'px';
@@ -99,7 +108,8 @@ async function renderPage() {
   await page.render({ canvasContext: cv.getContext('2d'), viewport: vp, transform: dpr !== 1 ? [dpr, 0, 0, dpr, 0, 0] : null }).promise;
   if (tk !== st.token) return;
   stage.innerHTML = ''; stage.appendChild(holder); st.holder = holder; attachDraw(holder); drawRects();
-  $('#rd-pageinfo').textContent = `${st.cur} / ${st.pages}`; $('#rd-zinfo').textContent = Math.round(st.zoom * 100) + '%';
+  $('#rd-pageinfo').textContent = `${st.cur} / ${st.pages}`; $('#rd-zinfo').textContent = window.PDFZoom.label(scale);
+  ['width', 'page', 'actual'].forEach((m) => { const b = $('#rd-z' + ({ width: 'fit', page: 'page', actual: '100' })[m]); if (b) b.classList.toggle('rd-on', st.mode === m); });
 }
 
 function drawRects() {
@@ -247,22 +257,22 @@ export function initRedact() {
   $('#rd-clearall').onclick = () => { st.rects = []; updateCount(); drawRects(); };
   $('#rd-prev').onclick = () => { if (st.cur > 1) { st.cur--; renderPage(); } };
   $('#rd-next').onclick = () => { if (st.cur < st.pages) { st.cur++; renderPage(); } };
-  $('#rd-zin').onclick = () => { st.zoom = Math.min(4, st.zoom * 1.2); renderPage(); };
-  $('#rd-zout').onclick = () => { st.zoom = Math.max(0.3, st.zoom / 1.2); renderPage(); };
-  $('#rd-zfit').onclick = () => { st.zoom = 1; renderPage(); };
-  $('#rd-zpage').onclick = async () => {
-    if (!st.pdf) return;
-    const page = await st.pdf.getPage(st.cur), base = page.getViewport({ scale: 1 }), stage = $('#rd-stage');
-    const fitW = Math.min(1.6, Math.max(0.4, (stage.clientWidth - 32) / base.width));
-    st.zoom = Math.max(0.3, Math.min((stage.clientWidth - 32) / base.width, (stage.clientHeight - 32) / base.height) / fitW); renderPage();
-  };
+  const Z = window.PDFZoom;
+  $('#rd-zin').onclick = () => { st.mode = 'zoom'; st.scale = Z.step(st.scale, 1); renderPage(); };
+  $('#rd-zout').onclick = () => { st.mode = 'zoom'; st.scale = Z.step(st.scale, -1); renderPage(); };
+  $('#rd-zfit').onclick = () => { st.mode = 'width'; renderPage(); };
+  $('#rd-zpage').onclick = () => { st.mode = 'page'; renderPage(); };
+  $('#rd-z100').onclick = () => { st.mode = 'actual'; renderPage(); };
   // Ctrl + cuộn chuột để phóng to / thu nhỏ
   let wt = null;
   $('#rd-stage').addEventListener('wheel', (e) => {
     if (!(e.ctrlKey || e.metaKey) || !st.pdf) return;
-    e.preventDefault(); st.zoom = Math.max(0.3, Math.min(4, st.zoom * (e.deltaY < 0 ? 1.1 : 1 / 1.1)));
-    $('#rd-zinfo').textContent = Math.round(st.zoom * 100) + '%'; clearTimeout(wt); wt = setTimeout(renderPage, 90);
+    e.preventDefault(); st.mode = 'zoom'; st.scale = Z.wheel(st.scale, e.deltaY);
+    $('#rd-zinfo').textContent = Z.label(st.scale); clearTimeout(wt); wt = setTimeout(renderPage, 90);
   }, { passive: false });
+  // Đổi cỡ cửa sổ: các chế độ "vừa..." và 100% tự tính lại
+  let rt = null;
+  addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => { const g = $('#rd-stage'); if (st.pdf && st.mode !== 'zoom' && g && g.clientWidth > 0) renderPage(); }, 150); });
   addEventListener('keydown', (e) => {
     if ((e.key === 'Delete' || e.key === 'Backspace') && st.sel && $('#tab-redact').classList.contains('active') && !/INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) {
       st.rects = st.rects.filter((r) => r.id !== st.sel); st.sel = null; updateCount(); drawRects();

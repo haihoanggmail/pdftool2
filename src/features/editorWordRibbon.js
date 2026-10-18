@@ -707,7 +707,7 @@ function buildRibbonHTML() {
         <div class="ribbon-group">
           <div class="ribbon-group-body">
             <button class="rb-btn-large" id="rb-view-fit-width" title="Xem vừa chiều rộng khung hình">
-              <span class="rb-icon">↔️</span><span class="rb-label">Vừa Khung</span>
+              <span class="rb-icon">↔️</span><span class="rb-label">Vừa Chiều Rộng</span>
             </button>
             <button class="rb-btn-large" id="rb-view-100" title="Xem tỷ lệ chuẩn 100%">
               <span class="rb-icon">🔍</span><span class="rb-label">100% Chuẩn</span>
@@ -990,8 +990,8 @@ function wireRibbonEvents() {
 
   // View modes
   document.getElementById('rb-view-fit-width')?.addEventListener('click', () => { if (typeof window.editorZoomFit === 'function') window.editorZoomFit(); });
-  document.getElementById('rb-view-100')?.addEventListener('click', () => { if (typeof window.setEditorZoom === 'function') window.setEditorZoom(1.5); });
-  document.getElementById('rb-view-fit-page')?.addEventListener('click', () => { if (typeof window.editorZoomFit === 'function') window.editorZoomFit(); });
+  document.getElementById('rb-view-100')?.addEventListener('click', () => { if (typeof window.editorZoom100 === 'function') window.editorZoom100(); });
+  document.getElementById('rb-view-fit-page')?.addEventListener('click', () => { if (typeof window.editorZoomPage === 'function') window.editorZoomPage(); });
   document.getElementById('rb-zoom-in-btn')?.addEventListener('click', () => { if (typeof window.editorZoomBy === 'function') window.editorZoomBy(1); });
   document.getElementById('rb-zoom-out-btn')?.addEventListener('click', () => { if (typeof window.editorZoomBy === 'function') window.editorZoomBy(-1); });
 
@@ -1217,7 +1217,9 @@ function buildWordStatusBarHTML() {
         <button class="word-zoom-btn" id="ws-zoom-out" title="Thu nhỏ">➖</button>
         <span id="ws-zoom-text" style="min-width:44px;text-align:center;font-weight:600;">100%</span>
         <button class="word-zoom-btn" id="ws-zoom-in" title="Phóng to">➕</button>
-        <button class="word-zoom-btn" id="ws-zoom-fit" title="Vừa chiều ngang (Fit to Window)" style="margin-left:6px;font-size:11px;">↔ Vừa khung</button>
+        <button class="word-zoom-btn" id="ws-zoom-fit" title="Vừa chiều rộng khung" style="margin-left:6px;font-size:11px;">↔ Vừa chiều rộng</button>
+        <button class="word-zoom-btn" id="ws-zoom-page" title="Cả trang nằm gọn trong khung" style="font-size:11px;">⛶ Vừa trang</button>
+        <button class="word-zoom-btn" id="ws-zoom-100" title="Kích thước thật (100%)" style="font-size:11px;">100%</button>
       </div>
     </div>
   `;
@@ -1401,6 +1403,8 @@ function initWordTextSelectionAndEditing() {
   document.getElementById('ws-zoom-in')?.addEventListener('click', () => { if (typeof window.editorZoomBy === 'function') window.editorZoomBy(1); });
   document.getElementById('ws-zoom-out')?.addEventListener('click', () => { if (typeof window.editorZoomBy === 'function') window.editorZoomBy(-1); });
   document.getElementById('ws-zoom-fit')?.addEventListener('click', () => { if (typeof window.editorZoomFit === 'function') window.editorZoomFit(); });
+  document.getElementById('ws-zoom-page')?.addEventListener('click', () => { if (typeof window.editorZoomPage === 'function') window.editorZoomPage(); });
+  document.getElementById('ws-zoom-100')?.addEventListener('click', () => { if (typeof window.editorZoom100 === 'function') window.editorZoom100(); });
   document.getElementById('ws-page-btn')?.addEventListener('click', () => {
     const doc = typeof window.getEditorPdfDoc === 'function' ? window.getEditorPdfDoc() : null;
     if (!doc) return;

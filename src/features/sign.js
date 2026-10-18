@@ -3,7 +3,15 @@ import '../styles/sign.css';
 
 const $ = (s, r = document) => r.querySelector(s);
 const STORE_KEY = 'pdftool-signatures';
-const st = { pdf: null, bytes: null, name: '', pages: 0, cur: 1, zoom: 1, ph: [], sigs: [], active: null, sel: null, token: 0, imgData: null };
+const st = { pdf: null, bytes: null, name: '', pages: 0, cur: 1, mode: 'width', scale: 96 / 72, ph: [], sigs: [], active: null, sel: null, token: 0, imgData: null };
+// Quy ước zoom dùng chung (PDFZoom): 100% = kích thước thật; Vừa chiều rộng / Vừa trang tính theo khung hiện tại
+const calcScale = (base, stage) => {
+  const Z = window.PDFZoom, aw = stage.clientWidth - 32, ah = stage.clientHeight - 32;
+  if (st.mode === 'page') return Z.fitPage(base.width, base.height, aw, ah);
+  if (st.mode === 'actual') return Z.actual();
+  if (st.mode === 'zoom') return Z.clamp(st.scale);
+  return Z.fitWidth(base.width, aw);
+};
 let uid = 1;
 
 // ---------- Lưu chữ ký trong trình duyệt ----------
@@ -71,6 +79,7 @@ const HTML = `
     <div class="sg-bar">
       <button class="sg-btn" id="sg-prev">◀</button><span id="sg-pageinfo">0 / 0</span><button class="sg-btn" id="sg-next">▶</button>
       <button class="sg-btn" id="sg-zout">－</button><span id="sg-zinfo">100%</span><button class="sg-btn" id="sg-zin">＋</button>
+      <button class="sg-btn" id="sg-zfit" title="Vừa chiều rộng khung">↔ Vừa chiều rộng</button><button class="sg-btn" id="sg-zpage" title="Cả trang nằm gọn trong khung">⛶ Vừa trang</button><button class="sg-btn" id="sg-z100" title="Kích thước thật (100%)">100%</button>
       <button class="sg-btn sg-primary" id="sg-add">➕ Thêm vào trang</button>
       <button class="sg-btn" id="sg-all">📑 Nhân bản sang mọi trang</button>
       <button class="sg-btn sg-ok" id="sg-export">⬇️ Xuất PDF đã ký</button>
@@ -146,7 +155,7 @@ async function openPdf(file) {
     window.Progress?.show('Đang mở PDF...');
     const bytes = new Uint8Array(await file.arrayBuffer());
     st.pdf = await window.pdfjsLib.getDocument({ data: bytes.slice(0), isEvalSupported: false }).promise;
-    st.bytes = bytes; st.name = file.name.replace(/\.pdf$/i, ''); st.pages = st.pdf.numPages; st.cur = 1; st.ph = []; st.sel = null;
+    st.bytes = bytes; st.name = file.name.replace(/\.pdf$/i, ''); st.pages = st.pdf.numPages; st.cur = 1; st.mode = 'width'; st.ph = []; st.sel = null;
     $('#sg-fileinfo').textContent = `${file.name} · ${st.pages} trang`;
     await renderPage();
   } catch (e) { window.toast?.('Không mở được PDF: ' + (e.message || e), 'error'); }
@@ -156,7 +165,8 @@ async function openPdf(file) {
 async function renderPage() {
   if (!st.pdf) return; const tk = ++st.token;
   const page = await st.pdf.getPage(st.cur), stage = $('#sg-stage');
-  const base = page.getViewport({ scale: 1 }), scale = Math.min(1.6, Math.max(0.4, (stage.clientWidth - 32) / base.width)) * st.zoom, vp = page.getViewport({ scale });
+  const base = page.getViewport({ scale: 1 }), scale = calcScale(base, stage), vp = page.getViewport({ scale });
+  st.scale = scale;
   const dpr = window.devicePixelRatio || 1, holder = document.createElement('div'); holder.className = 'sg-page';
   holder.style.width = vp.width + 'px'; holder.style.height = vp.height + 'px';
   const cv = document.createElement('canvas'); cv.width = Math.round(vp.width * dpr); cv.height = Math.round(vp.height * dpr); cv.style.width = vp.width + 'px'; cv.style.height = vp.height + 'px'; cv.style.display = 'block';
@@ -166,7 +176,8 @@ async function renderPage() {
   stage.innerHTML = ''; stage.appendChild(holder); st.holder = holder;
   holder.addEventListener('pointerdown', (e) => { if (e.target === holder || e.target === cv) { st.sel = null; drawItems(holder); } });
   drawItems(holder);
-  $('#sg-pageinfo').textContent = `${st.cur} / ${st.pages}`; $('#sg-zinfo').textContent = Math.round(st.zoom * 100) + '%';
+  $('#sg-pageinfo').textContent = `${st.cur} / ${st.pages}`; $('#sg-zinfo').textContent = window.PDFZoom.label(scale);
+  [['width', 'sg-zfit'], ['page', 'sg-zpage'], ['actual', 'sg-z100']].forEach(([m, id]) => { const b = $('#' + id); if (b) b.classList.toggle('sg-on', st.mode === m); });
 }
 
 // Vẽ các chữ ký của trang hiện tại: mỗi chữ ký là một đối tượng độc lập (kéo, đổi cỡ, xoá)
@@ -275,8 +286,21 @@ export function initSign() {
   $('#sg-pdf').onchange = (e) => { if (e.target.files[0]) openPdf(e.target.files[0]); e.target.value = ''; };
   $('#sg-prev').onclick = () => { if (st.cur > 1) { st.cur--; renderPage(); } };
   $('#sg-next').onclick = () => { if (st.cur < st.pages) { st.cur++; renderPage(); } };
-  $('#sg-zin').onclick = () => { st.zoom = Math.min(3, st.zoom + 0.2); renderPage(); };
-  $('#sg-zout').onclick = () => { st.zoom = Math.max(0.4, st.zoom - 0.2); renderPage(); };
+  const Z = window.PDFZoom;
+  $('#sg-zin').onclick = () => { st.mode = 'zoom'; st.scale = Z.step(st.scale, 1); renderPage(); };
+  $('#sg-zout').onclick = () => { st.mode = 'zoom'; st.scale = Z.step(st.scale, -1); renderPage(); };
+  $('#sg-zfit').onclick = () => { st.mode = 'width'; renderPage(); };
+  $('#sg-zpage').onclick = () => { st.mode = 'page'; renderPage(); };
+  $('#sg-z100').onclick = () => { st.mode = 'actual'; renderPage(); };
+  // Ctrl + cuộn chuột để phóng to / thu nhỏ (giống các khung xem khác)
+  let wt = null;
+  $('#sg-stage').addEventListener('wheel', (e) => {
+    if (!(e.ctrlKey || e.metaKey) || !st.pdf) return;
+    e.preventDefault(); st.mode = 'zoom'; st.scale = Z.wheel(st.scale, e.deltaY);
+    $('#sg-zinfo').textContent = Z.label(st.scale); clearTimeout(wt); wt = setTimeout(renderPage, 90);
+  }, { passive: false });
+  let rt = null;
+  addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => { const g = $('#sg-stage'); if (st.pdf && st.mode !== 'zoom' && g && g.clientWidth > 0) renderPage(); }, 150); });
   $('#sg-add').onclick = addToPage; $('#sg-all').onclick = duplicateAll; $('#sg-export').onclick = exportSigned;
   const toToolsBtn = $('#sg-to-tools');
   if (toToolsBtn) toToolsBtn.onclick = exportAndSendToTools;
