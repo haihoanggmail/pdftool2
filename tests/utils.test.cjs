@@ -1,0 +1,34 @@
+const { ROOT, baseCtx, load } = require('./helpers.cjs');
+const ctx = baseCtx(); load(ctx, ROOT + 'public/legacy/05-core-utils.js');
+const PDFZoom = ctx.PDFZoom, PDFFonts = ctx.PDFFonts;
+const Z=PDFZoom, F=PDFFonts; let fail=0;
+const eq=(a,b,m)=>{ if(JSON.stringify(a)!==JSON.stringify(b)){fail++;console.log('FAIL',m,JSON.stringify(a),'!=',JSON.stringify(b));} else console.log('ok  ',m); };
+// ---- zoom ----
+eq(Z.pct(Z.actual()),100,'100% = actual');
+eq(Z.pct(Z.fitWidth(595,800)),Math.round(800/595/(4/3)*100),'fitWidth pct');
+eq(Z.fitPage(595,842,800,600)<Z.fitWidth(595,800),true,'fitPage < fitWidth khi khung thấp');
+eq(Z.pct(Z.step(Z.actual(),1)),125,'step +');
+eq(Z.pct(Z.step(Z.actual(),-1)),75,'step -');
+eq(Z.pct(Z.step(Z.fitWidth(595,700),1)),Z.STEPS.find(p=>p>Math.round(700/595/(4/3)*100)+0.5),'step từ mức lẻ');
+eq(Z.pct(Z.clamp(100)),400,'clamp max'); eq(Z.pct(Z.clamp(0.001)),10,'clamp min');
+// ---- font ----
+const P=(r,f)=>{const p=F.parse(r,f);return [p.family,p.bold,p.italic,p.cls,p.std];};
+eq(P('ABCDEF+TimesNewRomanPS-BoldMT'),['Times New Roman',true,false,'serif',true],'TimesNewRomanPS-BoldMT');
+eq(P('ArialMT'),['Arial',false,false,'sans',true],'ArialMT');
+eq(P('Arial-BoldItalicMT'),['Arial',true,true,'sans',true],'Arial-BoldItalicMT');
+eq(P('Arial-Black'),['Arial',true,false,'sans',true],'Arial-Black (kiểu Black)');
+eq(P('ArialBlack'),['Arial Black',false,false,'sans',true],'ArialBlack (họ Arial Black)');
+eq(P('CourierNewPSMT'),['Courier New',false,false,'mono',true],'CourierNewPSMT');
+eq(P('Calibri-Light'),['Calibri',false,false,'sans',true],'Calibri-Light');
+eq(P('TimesNewRomanBold'),['Times New Roman',true,false,'serif',true],'TimesNewRomanBold');
+eq(P('Times-Roman'),['Times New Roman',false,false,'serif',true],'Times-Roman');
+eq(P('Helvetica-Oblique'),['Arial',false,true,'sans',true],'Helvetica-Oblique');
+eq(P('XYZABC+BeVietnamPro-Medium'),['Be Vietnam Pro',false,false,'sans',false],'BeVietnamPro');
+eq(P('SourceSerifPro-Regular'),['Source Serif Pro',false,false,'serif',false],'SourceSerifPro');
+eq(P('UTMAvo'),['UTM Avo',false,false,'sans',false],'UTMAvo');
+eq(P('LiberationSans'),['Arial',false,false,'sans',true],'LiberationSans');
+eq(P('DejaVuSansMono'),['Courier New',false,false,'mono',true],'DejaVuSansMono');
+eq(P('SomeFont',4)[3],'serif','cờ serif'); eq(P('SomeFont',8)[3],'mono','cờ mono');
+eq(F.forExcel('ABCDEF+MyriadPro-Bold'),{name:'Arial',bold:true,italic:false,family:2},'Excel font lạ -> Arial');
+eq(F.forExcel('GaramondPremrPro').name,'Times New Roman','Excel font serif lạ -> Times New Roman');
+process.exit(fail?1:0);
