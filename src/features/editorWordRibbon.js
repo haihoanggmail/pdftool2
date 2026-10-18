@@ -772,10 +772,6 @@ function wireRibbonEvents() {
   document.querySelectorAll('.rb-btn-large[data-tool], .rb-btn-compact[data-tool]').forEach(btn => {
     btn.addEventListener('click', () => {
       const tool = btn.dataset.tool;
-      if (tool !== 'region' && btn.classList.contains('active')) {   // bấm lại nút đang chọn -> bỏ chọn
-        window.clearEditorTool?.();
-        return;
-      }
       if (tool === 'region') {
         const sideReg = document.getElementById('region-mode-btn');
         if (sideReg) sideReg.click();
