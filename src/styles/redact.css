@@ -24,3 +24,5 @@
 .rd-hitem button{border:0;background:transparent;color:var(--danger,#dc2626);cursor:pointer;font-size:12px}
 .rd-flash{animation:rdflash 1.4s ease-out 1}
 @keyframes rdflash{0%,40%{outline:4px solid #f59e0b;box-shadow:0 0 0 8px rgba(245,158,11,.5)}100%{outline:1px solid #f59e0b;box-shadow:none}}
+
+.rd-btn.rd-on{background:var(--primary,#0078d4);border-color:var(--primary,#0078d4);color:#fff}

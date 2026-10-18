@@ -27,3 +27,5 @@
 .sg-rs{position:absolute;right:-6px;bottom:-6px;width:12px;height:12px;background:var(--primary,#0078d4);border-radius:2px;cursor:nwse-resize;display:none}
 .sg-item.sel .sg-del,.sg-item.sel .sg-rs,.sg-item:hover .sg-del,.sg-item:hover .sg-rs{display:block}
 @media(max-width:900px){.sg-wrap{flex-direction:column}.sg-left{width:100%}.sg-right{width:100%}}
+
+.sg-btn.sg-on{background:var(--primary,#0078d4);border-color:var(--primary,#0078d4);color:#fff}
