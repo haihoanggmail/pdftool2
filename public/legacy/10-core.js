@@ -1832,6 +1832,20 @@ function setEditorTool(toolName) {
     initEditorRegionSelection();
 }
 
+// Bỏ chọn công cụ vẽ -> quay về chế độ mặc định (chọn / sửa chữ)
+function clearEditorTool() {
+    if (isDrawingShape) {            // đang kéo dở nét vẽ thì hủy luôn
+        isDrawingShape = false;
+        currentDrawShape = null;
+        if (typeof redrawPageShapes === 'function') redrawPageShapes();
+    }
+    if (editorCurrentTool === 'text') return;
+    setEditorTool('text');
+    document.querySelectorAll('.rb-btn-large[data-tool], .rb-btn-compact[data-tool]')
+        .forEach(b => { if (b.dataset.tool !== 'region') b.classList.remove('active'); });
+}
+window.clearEditorTool = clearEditorTool;
+
 function getArrowGeometry(x1, y1, x2, y2, size) {
     const dx = x2 - x1, dy = y2 - y1;
     const len = Math.hypot(dx, dy);
@@ -1876,6 +1890,7 @@ document.addEventListener('keydown', function(e) {
     const t = e.target;
     if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
     const _k = e.key.toLowerCase();
+    if (e.key === 'Escape') { clearEditorTool(); return; }
     if ((e.ctrlKey || e.metaKey) && _k === 'o') {
         e.preventDefault();
         document.getElementById('editor-file-input')?.click();
@@ -1899,6 +1914,16 @@ document.addEventListener('keydown', function(e) {
         e.preventDefault();
         if (typeof editorExportPDF === 'function') editorExportPDF();
     }
+});
+
+// Click ra nền xám quanh trang (ngoài trang PDF) -> bỏ chọn công cụ vẽ.
+// Bấm vào thanh công cụ hoặc vẽ trên trang thì giữ nguyên công cụ.
+document.addEventListener('pointerdown', function (e) {
+    if (!document.getElementById('tab-editor')?.classList.contains('active')) return;
+    if (editorCurrentTool === 'text') return;
+    if (!e.target.closest || !e.target.closest('.editor-stage-scroll')) return;
+    if (e.target.closest('#editor-page-shell')) return;
+    clearEditorTool();
 });
 
 let drawEventsBound = false;
