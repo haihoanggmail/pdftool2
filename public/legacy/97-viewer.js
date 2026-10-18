@@ -1,10 +1,13 @@
 // ===================== Bộ xem trước PDF dùng chung =====================
 // - Hiển thị nhiều trang liên tục, dựng ảnh trang theo nhu cầu (chỉ trang đang thấy)
 // - Ctrl + cuộn chuột (hoặc chụm 2 ngón trên touchpad) để phóng to / thu nhỏ
-// - "Vừa ngang": 1 cột vừa chiều rộng khung | "Nhiều trang": tự chia cột để cả tài liệu vừa khung
+// - "Vừa chiều rộng": 1 cột vừa chiều rộng khung | "Vừa trang": cả trang nằm gọn trong khung | "100%": kích thước thật
+// - "Nhiều trang": tự chia cột để cả tài liệu vừa khung
+// - Mọi con số phần trăm dùng chung quy ước của PDFZoom (05-core-utils.js): 100% = kích thước thật 96 dpi
 (function () {
-    const PX_PER_PT = 96 / 72;
-    const GAP = 12, PAD = 14, MIN_MULTI_W = 96, MAX_SCALE = 6, MIN_SCALE = 0.1;
+    const Z = window.PDFZoom;
+    const PX_PER_PT = Z.PX_PER_PT;
+    const GAP = 12, PAD = 14, MIN_MULTI_W = 96;
 
     function el(tag, cls, html) {
         const e = document.createElement(tag);
@@ -34,15 +37,17 @@
                 '<button type="button" class="btn btn-small" data-a="out" title="Thu nhỏ (Ctrl + cuộn xuống)">➖</button>' +
                 '<span class="hv-zl" title="Mức thu phóng">100%</span>' +
                 '<button type="button" class="btn btn-small" data-a="in" title="Phóng to (Ctrl + cuộn lên)">➕</button>' +
-                '<button type="button" class="btn btn-small" data-a="width" title="Vừa chiều ngang khung">↔ Vừa ngang</button>' +
+                '<button type="button" class="btn btn-small" data-a="width" title="Vừa chiều rộng khung">↔ Vừa chiều rộng</button>' +
+                '<button type="button" class="btn btn-small" data-a="page" title="Cả trang nằm gọn trong khung">⛶ Vừa trang</button>' +
+                '<button type="button" class="btn btn-small" data-a="actual" title="Kích thước thật (100%)">100%</button>' +
                 '<button type="button" class="btn btn-small" data-a="multi" title="Hiện nhiều trang, tự co cho vừa khung">▦ Nhiều trang</button>';
             label = bar.querySelector('.hv-zl');
             bar.addEventListener('click', e => {
                 const b = e.target.closest('button[data-a]');
                 if (!b) return;
                 const a = b.dataset.a;
-                if (a === 'in') api.zoomBy(1.2);
-                else if (a === 'out') api.zoomBy(1 / 1.2);
+                if (a === 'in') api.zoomStep(1);
+                else if (a === 'out') api.zoomStep(-1);
                 else api.setMode(a);
             });
             (opts.barParent || area.parentNode).insertBefore(bar, opts.barParent ? null : area);
@@ -58,7 +63,9 @@
             const av = availSize();
             let maxW = 0, maxH = 0;
             S.pages.forEach(p => { maxW = Math.max(maxW, p.w); maxH = Math.max(maxH, p.h); });
-            if (S.mode === 'width') return Math.min(MAX_SCALE, av.w / maxW);
+            if (S.mode === 'width') return Z.fitWidth(maxW, av.w);
+            if (S.mode === 'page') return Z.fitPage(maxW, maxH, av.w, av.h);
+            if (S.mode === 'actual') return Z.actual();
             if (S.mode === 'multi') {
                 let best = null;
                 for (let c = 1; c <= n; c++) {
@@ -75,15 +82,17 @@
         function layout() {
             if (!S.pages.length) return;
             const ratio = area.scrollHeight > 0 ? (area.scrollTop + area.clientHeight / 2) / area.scrollHeight : 0;
-            S.scale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, computeScale()));
+            S.scale = Z.clamp(computeScale());
             S.pages.forEach(p => {
                 p.el.style.width = Math.floor(p.w * S.scale) + 'px';
                 p.el.style.height = Math.floor(p.h * S.scale) + 'px';
             });
-            if (label) label.textContent = Math.round(S.scale / PX_PER_PT * 100) + '%';
+            if (label) label.textContent = Z.label(S.scale);
             if (bar) {
-                bar.querySelector('[data-a="width"]').classList.toggle('hv-on', S.mode === 'width');
-                bar.querySelector('[data-a="multi"]').classList.toggle('hv-on', S.mode === 'multi');
+                ['width', 'page', 'actual', 'multi'].forEach(m => {
+                    const b = bar.querySelector('[data-a="' + m + '"]');
+                    if (b) b.classList.toggle('hv-on', S.mode === m);
+                });
             }
             area.classList.toggle('hv-multi', S.mode === 'multi');
             if (area.scrollHeight > area.clientHeight) area.scrollTop = Math.max(0, ratio * area.scrollHeight - area.clientHeight / 2);
@@ -167,7 +176,9 @@
         area.addEventListener('wheel', e => {
             if (!(e.ctrlKey || e.metaKey) || !S.pages.length) return;
             e.preventDefault();
-            api.zoomBy(e.deltaY < 0 ? 1.1 : 1 / 1.1);
+            if (S.mode !== 'zoom') { S.zoom = S.scale; S.mode = 'zoom'; }
+            S.zoom = Z.wheel(S.zoom, e.deltaY);
+            layout();
         }, { passive: false });
         if (typeof ResizeObserver !== 'undefined') {
             let first = true;
@@ -217,7 +228,12 @@
             setMode(m) { S.mode = m; layout(); },
             zoomBy(f) {
                 if (S.mode !== 'zoom') { S.zoom = S.scale; S.mode = 'zoom'; }
-                S.zoom = Math.max(MIN_SCALE, Math.min(MAX_SCALE, S.zoom * f));
+                S.zoom = Z.clamp(S.zoom * f);
+                layout();
+            },
+            zoomStep(dir) {
+                if (S.mode !== 'zoom') { S.zoom = S.scale; S.mode = 'zoom'; }
+                S.zoom = Z.step(S.zoom, dir);
                 layout();
             },
             goto(n) {
@@ -242,29 +258,39 @@
         };
         const set = v => {
             if (typeof CMP === 'undefined') return;
-            CMP.scale = Math.max(0.4, Math.min(4, v));
+            CMP.scale = Z.clamp(v);
             const l = document.getElementById('cmp-zoom-label');
-            if (l) l.textContent = Math.round(CMP.scale / 1.3333 * 100) + '%';
+            if (l) l.textContent = Z.label(CMP.scale);
             apply();
+        };
+        // lấy trang đầu + khung chứa để tính "vừa chiều rộng / vừa trang"
+        const firstPage = () => {
+            const d = (typeof compareDoc1 !== 'undefined' && compareDoc1) || (typeof compareDoc2 !== 'undefined' && compareDoc2);
+            if (!d) return Promise.resolve(null);
+            const ov = document.getElementById('overlay-mode');
+            const overlayOn = !!(ov && ov.checked);
+            const pane = overlayOn ? document.getElementById('compare-overlay-container') : document.getElementById('compare-pane-1');
+            return d.getPage(1).then(pg => {
+                const v = pg.getViewport({ scale: 1 });
+                const wide = overlayOn ? 1 : 2;                 // 2 khung cạnh nhau: tính theo 1 khung
+                const w = (pane && pane.clientWidth || box.clientWidth / wide) - 36;
+                const h = (pane && pane.clientHeight || box.clientHeight) - 36;
+                return { pw: v.width, ph: v.height, w: w, h: h };
+            });
         };
         box.addEventListener('wheel', e => {
             if (!(e.ctrlKey || e.metaKey)) return;
             e.preventDefault();
-            set(CMP.scale * (e.deltaY < 0 ? 1.1 : 1 / 1.1));
+            set(Z.wheel(CMP.scale, e.deltaY));
         }, { passive: false });
         window.cmpZoomBy = f => set(CMP.scale * f);
-        window.cmpZoomFit = () => {
-            const d = (typeof compareDoc1 !== 'undefined' && compareDoc1) || (typeof compareDoc2 !== 'undefined' && compareDoc2);
-            if (!d) return;
-            const ov = document.getElementById('overlay-mode');
-            const pane = ov && ov.checked ? document.getElementById('compare-overlay-container') : document.getElementById('compare-pane-1');
-            const wide = ov && ov.checked ? 1 : 2;                      // 2 khung cạnh nhau: tính theo 1 khung
-            d.getPage(1).then(pg => {
-                const w = pg.getViewport({ scale: 1 }).width;
-                const avail = (pane.clientWidth || (box.clientWidth / wide)) - 36;
-                set(avail / w);
-            });
-        };
+        window.cmpZoomStep = dir => set(Z.step(CMP.scale, dir));
+        window.cmpZoomFit = () => { firstPage().then(g => { if (g) set(Z.fitWidth(g.pw, g.w)); }); };
+        window.cmpZoomPage = () => { firstPage().then(g => { if (g) set(Z.fitPage(g.pw, g.ph, g.w, g.h)); }); };
+        window.cmpZoom100 = () => set(Z.actual());
+        // nhãn ban đầu phải khớp tỉ lệ thật
+        const l0 = document.getElementById('cmp-zoom-label');
+        if (l0 && typeof CMP !== 'undefined') l0.textContent = Z.label(CMP.scale);
     }
 
     // ---------- Khung xem trước nhiều trang đặt ngay dưới danh sách file (tab Word / Excel) ----------

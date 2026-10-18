@@ -291,7 +291,7 @@
         addedTexts = e.added || [];
         editorShapes = e.shapes || [];
         editorSigs = e.sigs || [];
-        editorScale = e.scale || 1.5;
+        editorScale = e.scale || (96 / 72);
 
         // Giữ bộ đếm id không bị trùng với dữ liệu đã có
         var maxSeq = e.seq || 0;

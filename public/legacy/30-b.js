@@ -42,6 +42,11 @@ def w2d_convert(opts_json):
         cv.convert("/w2d_out.docx", pages=opts.get("pages"), **opts["settings"])
     finally:
         cv.close()
+        try:
+            import gc
+            gc.collect()
+        except Exception:
+            pass
 `;
     const WORKER_SRC = `
 let inst = null, py = null;
@@ -85,6 +90,9 @@ self.onmessage = async (ev) => {
     let listeners = new Set();
     let items = []; // {id, file, pages, status, text, blob, name, note}
     let seq = 0, busy = false;
+    let cancelled = false, activeReject = null, tickTimer = null, progressBase = '';
+    const IDLE_MS = 3 * 60 * 1000;                 // sau 3 phút không dùng: giải phóng bộ chuyển đổi (vài trăm MB RAM)
+    const BIG_BYTES = 40 * 1048576;                // file >= 40 MB: giải phóng ngay sau khi xong
 
     const $ = id => document.getElementById(id);
     const fmtBytes = n => n > 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB';
@@ -93,7 +101,37 @@ self.onmessage = async (ev) => {
     function setProgress(pct, msg) {
         $('w2d-progress-wrap').style.display = 'block';
         if (pct !== null && pct !== undefined) $('w2d-progress-bar').style.width = Math.max(0, Math.min(100, pct)) + '%';
-        if (msg !== undefined) $('w2d-status').textContent = msg;
+        if (msg !== undefined) { progressBase = msg; $('w2d-status').textContent = msg; }
+    }
+
+    // Đồng hồ thời gian đã chạy: cho người dùng thấy tác vụ vẫn đang làm việc (kể cả khi file lớn, ít thông báo)
+    function startTicker() {
+        stopTicker();
+        const t0 = performance.now();
+        tickTimer = setInterval(() => {
+            const el = $('w2d-status');
+            if (!el || !busy) return;
+            el.setAttribute('data-elapsed', PDFJob.fmtTime(performance.now() - t0));
+            el.textContent = (progressBase ? progressBase + ' • ' : '') + 'đã chạy ' + PDFJob.fmtTime(performance.now() - t0);
+        }, 1000);
+    }
+    function stopTicker() { if (tickTimer) { clearInterval(tickTimer); tickTimer = null; } }
+
+    // Giải phóng bộ chuyển đổi (WebAssembly chiếm vài trăm MB RAM và không tự co lại): tắt hẳn tiến trình nền
+    function releaseEngine() {
+        if (worker) { try { worker.terminate(); } catch (e) {} }
+        worker = null; loadPromise = null; loadedBase = '';
+        listeners.clear();
+    }
+    const idleRelease = PDFJob.idle(() => { if (!busy) releaseEngine(); }, IDLE_MS);
+
+    function cancelRun() {
+        if (!busy || cancelled) return;
+        cancelled = true;
+        stopTicker();
+        setProgress(null, 'Đang hủy...');
+        releaseEngine();
+        if (activeReject) { const r = activeReject; activeReject = null; r(PDFJob.cancelError()); }
     }
 
     function ensureEngine() {
@@ -178,6 +216,7 @@ self.onmessage = async (ev) => {
         }
         const anyOk = items.some(i => i.blob);
         $('w2d-run-btn').disabled = busy || !items.length;
+        const cb = $('w2d-cancel-btn'); if (cb) cb.style.display = busy ? 'inline-flex' : 'none';
         $('w2d-zip-btn').style.display = items.filter(i => i.blob).length > 1 ? 'flex' : 'none';
         $('w2d-clear-btn').style.display = items.length && !busy ? 'flex' : 'none';
     }
@@ -196,14 +235,21 @@ self.onmessage = async (ev) => {
         for (const f of files) {
             const it = { id: ++seq, file: f, status: 'wait', text: 'Chờ chuyển đổi' };
             items.push(it);
+            let pdf = null;
             try {
-                const buf = await f.arrayBuffer();
-                const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(buf.slice(0)) }).promise;
+                // một bản sao duy nhất cho pdf.js; đọc xong là đóng tài liệu để trả bộ nhớ
+                pdf = await pdfjsLib.getDocument({ data: new Uint8Array(await f.arrayBuffer()) }).promise;
                 it.numPages = pdf.numPages;
+                if (f.size >= BIG_BYTES || pdf.numPages > 150) {
+                    it.big = true;
+                    it.bigNote = 'File lớn (' + fmtBytes(f.size) + ', ' + pdf.numPages + ' trang): có thể mất vài phút. Nên nhập khoảng trang (ví dụ 1-50) để chuyển từng phần; bấm Hủy bất cứ lúc nào.';
+                }
                 let chars = 0;
                 for (let p = 1; p <= Math.min(3, pdf.numPages); p++) {
-                    const tc = await (await pdf.getPage(p)).getTextContent();
+                    const pg = await pdf.getPage(p);
+                    const tc = await pg.getTextContent();
                     tc.items.forEach(x => { chars += (x.str || '').trim().length; });
+                    pg.cleanup();
                 }
                 if (!chars) {
                     it.warn = 'PDF này là bản scan (không có lớp chữ). Chữ sẽ ở dạng hình ảnh. Hãy chạy Chuyển đổi → OCR trước nếu muốn chữ có thể chỉnh sửa.';
@@ -212,7 +258,10 @@ self.onmessage = async (ev) => {
                 }
             } catch (e) {
                 it.warn = 'Không đọc được thông tin file (có thể bị đặt mật khẩu).';
+            } finally {
+                if (pdf) { try { await pdf.destroy(); } catch (e) {} }
             }
+            if (it.big && !it.warn) it.warn = it.bigNote;
             render();
         }
     }
@@ -232,18 +281,24 @@ self.onmessage = async (ev) => {
             };
             listeners.add(fn);
             it.file.arrayBuffer().then(buf => {
+                if (!worker) { listeners.delete(fn); reject(PDFJob.cancelError()); return; }
                 const pages = parsePages($('w2d-pages').value, it.numPages);
                 if (pages && !pages.length) { listeners.delete(fn); reject(new Error('Khoảng trang không hợp lệ.')); return; }
-                const opts = {
-                    pages: pages,
-                    settings: {
-                        parse_lattice_table: $('w2d-lattice') ? $('w2d-lattice').checked : true,
-                        parse_stream_table: $('w2d-stream') ? $('w2d-stream').checked : true,
-                        delete_end_line_hyphen: $('w2d-hyphen') ? $('w2d-hyphen').checked : true,
-                        ignore_page_error: true,
-                        multi_processing: false
-                    }
+                // "Chế độ ưu tiên chuyển đổi": layout = bám sát bố cục gốc, flow = đoạn văn liền mạch, dễ gõ tiếp
+                const mode = $('w2d-mode') ? $('w2d-mode').value : 'layout';
+                const settings = {
+                    parse_lattice_table: $('w2d-lattice') ? $('w2d-lattice').checked : true,
+                    parse_stream_table: $('w2d-stream') ? $('w2d-stream').checked : true,
+                    delete_end_line_hyphen: $('w2d-hyphen') ? $('w2d-hyphen').checked : true,
+                    ignore_page_error: true,
+                    multi_processing: false,
+                    clip_image_res_ratio: 4.0                       // ảnh/hình vector cắt ra nét hơn (mặc định 3)
                 };
+                if (mode === 'flow') {
+                    settings.line_break_free_space_ratio = 0.3;     // coi các dòng ngắt tự nhiên là cùng một đoạn
+                    settings.new_paragraph_free_space_ratio = 0.85;
+                }
+                const opts = { pages: pages, settings: settings };
                 worker.postMessage({ type: 'convert', id: it.id, bytes: buf, opts: opts }, [buf]);
             }).catch(e => { listeners.delete(fn); reject(e); });
         });
@@ -251,44 +306,63 @@ self.onmessage = async (ev) => {
 
     async function run() {
         if (busy || !items.length) return;
-        busy = true;
+        busy = true; cancelled = false;
+        idleRelease.disarm();
         render();
-        let ok = 0;
+        let ok = 0, bigSeen = false;
+        const gate = new Promise((_, rej) => { activeReject = rej; });
+        gate.catch(() => {});
+        startTicker();
         try {
             setProgress(0, 'Đang tải bộ chuyển đổi (lần đầu ~55 MB, các lần sau nhanh hơn)...');
-            await ensureEngine();
+            await Promise.race([ensureEngine(), gate]);
             for (let i = 0; i < items.length; i++) {
+                if (cancelled) break;
                 const it = items[i];
                 if (it.blob) continue;
+                if (it.big) bigSeen = true;
                 it.status = 'run'; it.text = 'Đang chuyển đổi...';
                 render();
                 const t0 = performance.now();
                 setProgress(0, 'Đang chuyển ' + it.file.name + ' (' + (i + 1) + '/' + items.length + ')...');
                 try {
-                    const res = await convertOne(it);
-                    const u8 = new Uint8Array(res.bytes);
+                    const res = await Promise.race([convertOne(it), gate]);
+                    let u8 = new Uint8Array(res.bytes);
                     if (u8.length < 2048 || u8[0] !== 0x50 || u8[1] !== 0x4B) {
                         throw new Error('Kết quả chuyển đổi không phải tệp DOCX hợp lệ hoặc bị rỗng (' + u8.length + ' bytes).');
                     }
+                    // Chuẩn hóa font (bỏ tiền tố ABCDEF+, đổi tên PostScript -> tên Word, bổ sung đậm/nghiêng, font thay thế)
+                    let fontNote = '';
+                    try { const fixed = await PDFFonts.fixDocx(u8); if (fixed && fixed !== u8) { u8 = fixed; fontNote = ' • Đã chuẩn hóa font'; } } catch (e) {}
                     it.blob = new Blob([u8], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
                     it.name = it.file.name.replace(/\.pdf$/i, '') + '.docx';
                     const duration = ((performance.now() - t0) / 1000).toFixed(1);
                     it.status = 'ok';
-                    it.text = 'Hoàn tất • ' + fmtBytes(it.blob.size) + ' • ' + duration + 's • Đã xác thực DOCX' + (res.note ? ' • ' + res.note : '');
+                    it.text = 'Hoàn tất • ' + fmtBytes(it.blob.size) + ' • ' + duration + 's • Đã xác thực DOCX' + fontNote + (res.note ? ' • ' + res.note : '');
                     ok++;
                     if (typeof logAction === 'function') logAction('pdf_to_word');
                     if (items.length === 1) w2dDownload(it);
                 } catch (e) {
+                    if (cancelled || PDFJob.isCancel(e)) { it.status = 'wait'; it.text = 'Đã hủy — bấm Chuyển đổi để chạy lại'; break; }
                     it.status = 'err'; it.text = 'Lỗi: ' + (e.message || e);
                 }
                 render();
             }
-            setProgress(100, ok ? 'Hoàn tất: đã chuyển ' + ok + ' file.' : 'Không chuyển được file nào.');
+            if (cancelled) setProgress(0, 'Đã hủy. Bộ nhớ đã được giải phóng.');
+            else setProgress(100, ok ? 'Hoàn tất: đã chuyển ' + ok + ' file.' : 'Không chuyển được file nào.');
         } catch (e) {
-            setProgress(0, 'Không tải được bộ chuyển đổi: ' + (e.message || e) + '. Kiểm tra kết nối mạng hoặc địa chỉ nguồn ở mục Nâng cao.');
-            items.forEach(it => { if (it.status === 'run') { it.status = 'err'; it.text = 'Chưa chuyển được'; } });
+            if (cancelled || PDFJob.isCancel(e)) {
+                setProgress(0, 'Đã hủy. Bộ nhớ đã được giải phóng.');
+            } else {
+                setProgress(0, 'Không tải được bộ chuyển đổi: ' + (e.message || e) + '. Kiểm tra kết nối mạng hoặc địa chỉ nguồn ở mục Nâng cao.');
+            }
+            items.forEach(it => { if (it.status === 'run') { it.status = cancelled ? 'wait' : 'err'; it.text = cancelled ? 'Đã hủy — bấm Chuyển đổi để chạy lại' : 'Chưa chuyển được'; } });
         } finally {
+            stopTicker();
+            activeReject = null;
             busy = false;
+            // file lớn hoặc đã hủy: trả lại RAM ngay; còn lại giữ tạm để lần sau chạy nhanh rồi tự giải phóng khi rảnh
+            if (cancelled || bigSeen) releaseEngine(); else idleRelease.arm();
             render();
         }
     }
@@ -319,8 +393,9 @@ self.onmessage = async (ev) => {
         if (!inp) return;
         inp.addEventListener('change', () => { addFiles(inp.files); inp.value = ''; });
         $('w2d-run-btn').addEventListener('click', run);
+        if ($('w2d-cancel-btn')) $('w2d-cancel-btn').addEventListener('click', cancelRun);
         $('w2d-zip-btn').addEventListener('click', zipAll);
-        $('w2d-clear-btn').addEventListener('click', () => { items = []; $('w2d-progress-wrap').style.display = 'none'; if ($('w2d-ocr-hint')) $('w2d-ocr-hint').style.display = 'none'; render(); });
+        $('w2d-clear-btn').addEventListener('click', () => { items = []; idleRelease.arm(); $('w2d-progress-wrap').style.display = 'none'; if ($('w2d-ocr-hint')) $('w2d-ocr-hint').style.display = 'none'; render(); });
         const drop = $('w2d-drop');
         drop.addEventListener('dragover', e => { e.preventDefault(); drop.style.outline = '2px dashed var(--primary)'; });
         drop.addEventListener('dragleave', () => { drop.style.outline = ''; });

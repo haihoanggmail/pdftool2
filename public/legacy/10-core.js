@@ -1007,7 +1007,7 @@ function applyViewFilter(filterValue) {
 }
 
 // ===================== So sánh tự động: ghép trang + so từng từ + so điểm ảnh =====================
-const CMP = { pairs: null, d1: null, d2: null, results: {}, wordsCache: new WeakMap(), activeId: null, bgToken: 0, pendingFocus: null, wrapA: null, wrapB: null, wrapO: null, scale: 1.3 };
+const CMP = { pairs: null, d1: null, d2: null, results: {}, wordsCache: new WeakMap(), activeId: null, bgToken: 0, pendingFocus: null, wrapA: null, wrapB: null, wrapO: null, scale: 96 / 72 };
 const CMP_COLORS = { added: '#22c55e', removed: '#ef4444', modified: '#f59e0b', moved: '#a855f7', style: '#3b82f6', visual: '#06b6d4', page: '#64748b' };
 const CMP_LABEL = { added: 'Thêm', removed: 'Xóa', modified: 'Sửa', moved: 'Di chuyển', style: 'Cỡ chữ', visual: 'Hình/đồ họa', page: 'Trang' };
 
@@ -1733,7 +1733,7 @@ let editorPage = 1;
 
 let editorViewport = null;
 
-let editorScale = 1.5;
+let editorScale = 96 / 72;   // 100% = kích thước thật (xem 05-core-utils.js)
 
 let modifiedTexts = [];
 
@@ -3437,18 +3437,17 @@ function editorRedo() {
 }
 
 // ===================== Phóng to / thu nhỏ =====================
-const ZOOM_STEPS = [ 10, 15, 20, 25, 30, 40, 50, 60, 75, 100, 125, 150, 200, 250 ];
-const ZOOM_BASE = 1.5;
+const ZOOM_BASE = PDFZoom.PX_PER_PT;     // 100% = kích thước thật; dùng chung quy ước với mọi khung xem
 
 function updateZoomLabel() {
     const el = document.getElementById('editor-zoom-label');
-    if (el) el.textContent = Math.round(editorScale / ZOOM_BASE * 100) + '%';
+    if (el) el.textContent = PDFZoom.label(editorScale);
 }
 
 async function setEditorZoom(newScale) {
     if (!editorPdfJsDoc) return;
-    newScale = Math.min(ZOOM_BASE * 2.5, Math.max(ZOOM_BASE * 0.1, Math.round(newScale * 1000) / 1000));
-    if (Math.abs(newScale - editorScale) < 0.001) return;
+    newScale = PDFZoom.clamp(Math.round(newScale * 1000) / 1000);
+    if (Math.abs(newScale - editorScale) < 0.001) { updateZoomLabel(); return; }
     const old = editorScale;
     editorShapes.forEach(sh => rescaleShape(sh, old, newScale));
     const sc = document.querySelector('.editor-stage-scroll');
@@ -3464,24 +3463,28 @@ async function setEditorZoom(newScale) {
 }
 
 function editorZoomBy(dir) {
-    const cur = Math.round(editorScale / ZOOM_BASE * 100);
-    let target = cur;
-    if (dir > 0) {
-        target = ZOOM_STEPS.find(p => p > cur + 1) || ZOOM_STEPS[ZOOM_STEPS.length - 1];
-    } else {
-        for (let i = ZOOM_STEPS.length - 1; i >= 0; i--) { if (ZOOM_STEPS[i] < cur - 1) { target = ZOOM_STEPS[i]; break; } }
-        if (target === cur) target = ZOOM_STEPS[0];
-    }
-    setEditorZoom(target / 100 * ZOOM_BASE);
+    setEditorZoom(PDFZoom.step(editorScale, dir));
 }
 
-function editorZoomFit() {
-    if (!editorPdfJsDoc || !editorViewport) return;
+// Kích thước trang gốc (đơn vị pt) và vùng khung đang xem
+function editorPageBox() {
+    if (!editorPdfJsDoc || !editorViewport) return null;
     const sc = document.querySelector('.editor-stage-scroll');
-    const baseWidth = editorViewport.width / editorScale;
-    const avail = sc.clientWidth - 56;
-    if (avail > 100 && baseWidth > 0) setEditorZoom(avail / baseWidth);
+    if (!sc) return null;
+    return { pw: editorViewport.width / editorScale, ph: editorViewport.height / editorScale, availW: sc.clientWidth - 56, availH: sc.clientHeight - 56 };
 }
+// Vừa chiều rộng: bề ngang trang = bề ngang khung
+function editorZoomFit() {
+    const g = editorPageBox();
+    if (g && g.availW > 100) setEditorZoom(PDFZoom.fitWidth(g.pw, g.availW));
+}
+// Vừa trang: cả trang nằm gọn trong khung
+function editorZoomPage() {
+    const g = editorPageBox();
+    if (g && g.availW > 100 && g.availH > 100) setEditorZoom(PDFZoom.fitPage(g.pw, g.ph, g.availW, g.availH));
+}
+// 100% = kích thước thật
+function editorZoom100() { setEditorZoom(PDFZoom.actual()); }
 
 (function bindZoomWheel() {
     const sc = document.querySelector('.editor-stage-scroll');
@@ -3489,7 +3492,7 @@ function editorZoomFit() {
     sc.addEventListener('wheel', e => {
         if (!(e.ctrlKey || e.metaKey) || !editorPdfJsDoc) return;
         e.preventDefault();
-        setEditorZoom(editorScale * (e.deltaY < 0 ? 1.1 : 1 / 1.1));
+        setEditorZoom(PDFZoom.wheel(editorScale, e.deltaY));
     }, { passive: false });
 })();
 

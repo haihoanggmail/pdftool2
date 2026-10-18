@@ -28,6 +28,9 @@
     let tool = 'split';
     const lists = { pdf: [], img: [] };
     let seq = 0, busy = false;
+    let cancelled = false;                    // người dùng bấm Hủy
+    const cancelHooks = new Set();            // việc cần làm ngay khi hủy (dừng bộ OCR, v.v.)
+    let tickTimer = null, progressBase = '';
     const curList = () => lists[INFO[tool].accept === 'img' ? 'img' : 'pdf'];
 
     // ---------- Tiện ích ----------
@@ -83,9 +86,33 @@
         return P().rgb(((v >> 16) & 255) / 255, ((v >> 8) & 255) / 255, (v & 255) / 255);
     }
     function setProgress(pct, msg) {
+        // Mọi công cụ đều gọi setProgress theo từng trang/file -> đây là điểm dừng chung khi người dùng bấm Hủy
+        if (busy && cancelled) throw PDFJob.cancelError();
         $('tl-progress-wrap').style.display = 'block';
         if (pct !== null && pct !== undefined) $('tl-progress-bar').style.width = Math.max(0, Math.min(100, pct)) + '%';
-        if (msg !== undefined) $('tl-status').textContent = msg;
+        if (msg !== undefined) { progressBase = msg; $('tl-status').textContent = msg; }
+    }
+    function startTicker() {
+        stopTicker();
+        const t0 = performance.now();
+        tickTimer = setInterval(() => {
+            const el = $('tl-status');
+            if (!el || !busy || cancelled) return;
+            el.textContent = (progressBase ? progressBase + ' • ' : '') + 'đã chạy ' + PDFJob.fmtTime(performance.now() - t0);
+        }, 1000);
+    }
+    function stopTicker() { if (tickTimer) { clearInterval(tickTimer); tickTimer = null; } }
+    // Promise bị từ chối ngay khi bấm Hủy: dùng với Promise.race để thoát khỏi việc đang chờ lâu (vd. nhận dạng 1 trang)
+    function cancelGate() {
+        return new Promise((_, rej) => { const h = () => rej(PDFJob.cancelError()); cancelHooks.add(h); });
+    }
+    function cancelRun() {
+        if (!busy || cancelled) return;
+        cancelled = true;
+        stopTicker();
+        const st = $('tl-status'); if (st) st.textContent = 'Đang hủy...';
+        cancelHooks.forEach(h => { try { h(); } catch (e) {} });
+        cancelHooks.clear();
     }
     function toBytes(it) { return new Uint8Array(it.bytes.slice(0)); }
     async function loadLib(it, extra) {
@@ -1755,12 +1782,42 @@ self.onmessage = async (ev) => {
 
     // ----- OCR -----
     let tessWorker = null, tessLang = '';
+    function stopTesseract() {
+        const w = tessWorker; tessWorker = null; tessLang = '';
+        if (w) { try { const r = w.terminate(); if (r && r.catch) r.catch(() => {}); } catch (e) {} }
+    }
+    // Bộ OCR chiếm rất nhiều RAM (dữ liệu ngôn ngữ + WebAssembly): tự giải phóng sau 2 phút không dùng
+    const tessIdle = PDFJob.idle(() => { if (!busy) stopTesseract(); }, 2 * 60 * 1000);
+
+    // Tiền xử lý ảnh trước khi nhận dạng: xám + kéo giãn tương phản (ảnh scan mờ, nền ngả vàng/xám đọc chính xác hơn)
+    function ocrPreprocess(cv) {
+        const w = cv.width, h = cv.height, c = cv.getContext('2d');
+        const img = c.getImageData(0, 0, w, h), d = img.data;
+        const hist = new Uint32Array(256);
+        for (let i = 0; i < d.length; i += 4) {
+            const g = (d[i] * 299 + d[i + 1] * 587 + d[i + 2] * 114) / 1000 | 0;
+            d[i] = d[i + 1] = d[i + 2] = g; hist[g]++;
+        }
+        const total = w * h; let acc = 0, lo = 0, hi = 255;
+        for (let v = 0; v < 256; v++) { acc += hist[v]; if (acc >= total * 0.01) { lo = v; break; } }
+        acc = 0;
+        for (let v = 255; v >= 0; v--) { acc += hist[v]; if (acc >= total * 0.01) { hi = v; break; } }
+        // chỉ kéo giãn khi ảnh thật sự thiếu tương phản; ảnh đã sạch (đen/trắng đủ gắt) thì giữ nguyên
+        if (hi - lo > 40 && (hi - lo < 200 || lo > 20 || hi < 235)) {
+            const k = 255 / (hi - lo);
+            for (let i = 0; i < d.length; i += 4) {
+                let g = (d[i] - lo) * k; g = g < 0 ? 0 : (g > 255 ? 255 : g);
+                d[i] = d[i + 1] = d[i + 2] = g;
+            }
+        }
+        c.putImageData(img, 0, 0);
+    }
     async function ensureTesseract(lang) {
         if (typeof Tesseract === 'undefined') {
             await loadScript(['vendor/tesseract.min.js', 'vendor/tesseract.min.js'], 'Không tải được thư viện OCR (cần kết nối mạng lần đầu)');
         }
         if (tessWorker && tessLang === lang) return tessWorker;
-        if (tessWorker) { try { await tessWorker.terminate(); } catch (e) {} tessWorker = null; }
+        if (tessWorker) stopTesseract();
         tessWorker = await Tesseract.createWorker(lang.split('+'), 1, {
             logger: m => { if (m.status && m.status.indexOf('loading') === 0) setProgress(null, 'Đang tải dữ liệu nhận dạng (' + m.status.replace('loading ', '') + ')...'); }
         });
@@ -1768,10 +1825,14 @@ self.onmessage = async (ev) => {
         return tessWorker;
     }
     TOOLS.ocr = {
-        read() { return { lang: $('tl-ocr-lang').value, dpi: +$('tl-ocr-dpi').value, out: $('tl-ocr-out').value, pages: $('tl-ocr-pages').value }; },
+        read() { return { lang: $('tl-ocr-lang').value, dpi: +$('tl-ocr-dpi').value, out: $('tl-ocr-out').value, pages: $('tl-ocr-pages').value, prep: $('tl-ocr-prep') ? $('tl-ocr-prep').value : 'auto' }; },
         async run(it, o) {
             setProgress(0, 'Đang chuẩn bị bộ OCR...');
-            const wk = await ensureTesseract(o.lang);
+            tessIdle.disarm();
+            const gate = cancelGate(); gate.catch(() => {});
+            const wk = await Promise.race([ensureTesseract(o.lang), gate]);
+            // giữ khoảng trắng giữa các từ + báo đúng độ phân giải để nhận dạng chữ nhỏ tốt hơn
+            try { await wk.setParameters({ preserve_interword_spaces: '1', user_defined_dpi: String(o.dpi) }); } catch (e) {}
             const doc = await openPdfJs(it);
             const n = doc.numPages;
             let pages = parsePages(o.pages, n);
@@ -1792,7 +1853,15 @@ self.onmessage = async (ev) => {
                 const c = cv.getContext('2d');
                 c.fillStyle = '#fff'; c.fillRect(0, 0, cv.width, cv.height);
                 await page.render({ canvasContext: c, viewport: vp }).promise;
-                const res = await wk.recognize(cv, {}, { text: true, blocks: true });
+                if (o.prep !== 'off') ocrPreprocess(cv);
+                let res;
+                try {
+                    // Hủy giữa chừng: dừng hẳn bộ OCR (nhận dạng 1 trang có thể mất vài chục giây) thay vì chờ xong trang
+                    res = await Promise.race([wk.recognize(cv, {}, { text: true, blocks: true }), gate]);
+                } catch (e) {
+                    if (PDFJob.isCancel(e)) { stopTesseract(); try { doc.destroy(); } catch (e2) {} cv.width = cv.height = 1; }
+                    throw e;
+                }
                 cv.width = cv.height = 1;
                 texts.push('=== Trang ' + (pi + 1) + ' ===\n' + (res.data.text || '').trim());
                 if (wantPdf) {
@@ -1801,6 +1870,7 @@ self.onmessage = async (ev) => {
                     (res.data.blocks || []).forEach(b => (b.paragraphs || []).forEach(pa => (pa.lines || []).forEach(ln => (ln.words || []).forEach(wd => {
                         const t = safeText(font, (wd.text || '').trim());
                         if (!t) return;
+                        if (wd.confidence != null && wd.confidence < 25) return;     // bỏ từ nhận dạng quá kém: tránh chèn chữ rác vào lớp tìm kiếm
                         const bb = wd.bbox, wpx = bb.x1 - bb.x0, hpx = bb.y1 - bb.y0;
                         if (wpx <= 0 || hpx <= 0) return;
                         const wpt = wpx / vp.scale;
@@ -1819,6 +1889,7 @@ self.onmessage = async (ev) => {
                 await new Promise(r => setTimeout(r, 0));
             }
             doc.destroy();
+            tessIdle.arm();
             const base = baseName(it.name), outs = [];
             if (wantPdf) outs.push({ name: base + '_ocr.pdf', data: await pdf.save() });
             if (o.out !== 'pdf') outs.push({ name: base + '_ocr.txt', data: new Blob(['﻿' + texts.join('\n\n')], { type: 'text/plain;charset=utf-8' }) });
@@ -2101,25 +2172,42 @@ self.onmessage = async (ev) => {
         let opts;
         try { opts = TOOLS[tool].read(); } catch (e) { alert(e.message); return; }
         const T = TOOLS[tool];
-        busy = true; render();
+        busy = true; cancelled = false; cancelHooks.clear(); render();
         list.forEach(it => { it.outs = []; it.err = null; if (tool !== 'img2pdf') it.note = ''; });
         $('tl-run-btn').textContent = '⏳ Đang xử lý...';
+        const cbtn = $('tl-cancel-btn'); if (cbtn) cbtn.style.display = 'inline-flex';
+        startTicker();
         try {
             if (T.all) {
-                try { list[0].outs = await T.run(list, opts); } catch (e) { list[0].err = e.message || String(e); console.error(e); }
+                try { list[0].outs = await T.run(list, opts); } catch (e) { if (PDFJob.isCancel(e)) { list[0].err = 'Đã hủy'; } else { list[0].err = e.message || String(e); console.error(e); } }
             } else {
                 for (let i = 0; i < list.length; i++) {
+                    if (cancelled) break;
                     const it = list[i];
                     if (it.err && !it.pages) continue;
                     if (it.enc && tool !== 'protect') { it.err = 'File có mật khẩu.'; continue; }
                     setProgress((i / list.length) * 100, 'Đang xử lý ' + (i + 1) + '/' + list.length + ': ' + it.name);
                     try { it.outs = await T.run(it, opts); }
-                    catch (e) { it.err = e.message || String(e); console.error(e); }
+                    catch (e) {
+                        if (cancelled || PDFJob.isCancel(e)) { it.err = 'Đã hủy'; break; }
+                        it.err = e.message || String(e); console.error(e);
+                    }
                 }
             }
         } finally {
-            busy = false;
+            stopTicker();
+            const wasCancelled = cancelled;
+            busy = false; cancelled = false; cancelHooks.clear();
             $('tl-run-btn').textContent = '▶ THỰC HIỆN';
+            if (cbtn) cbtn.style.display = 'none';
+            if (wasCancelled) {
+                // trả lại bộ nhớ ngay: dừng bộ OCR, bỏ kết quả dở dang
+                try { stopTesseract(); } catch (e) {}
+                list.forEach(it => { if (it.err === 'Đã hủy') it.outs = []; });
+                setProgress(0, 'Đã hủy. Bộ nhớ đã được giải phóng.');
+                render();
+                return;
+            }
         }
         const all = list.reduce((a, it) => a.concat(it.outs.map(o => ({ it, o }))), []);
         const ok = all.length, errs = list.filter(it => it.err).length;
@@ -2366,6 +2454,7 @@ self.onmessage = async (ev) => {
         $('tl-pick-btn').addEventListener('click', () => $('tl-input').click());
         $('tl-input').addEventListener('change', e => { addFiles(e.target.files); e.target.value = ''; });
         $('tl-run-btn').addEventListener('click', run);
+        if ($('tl-cancel-btn')) $('tl-cancel-btn').addEventListener('click', cancelRun);
         $('tl-zip-btn').addEventListener('click', zipAll);
         $('tl-clear-btn').addEventListener('click', () => { curList().forEach(it => it.url && URL.revokeObjectURL(it.url)); curList().length = 0; $('tl-progress-wrap').style.display = 'none'; mgThumbCanvas = null; renderMarginPreview(); render(); });
         const drop = $('tl-drop');
