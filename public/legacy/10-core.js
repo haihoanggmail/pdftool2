@@ -1922,6 +1922,20 @@ function setEditorTool(toolName) {
     initEditorRegionSelection();
 }
 
+// Bỏ chọn công cụ vẽ -> quay về chế độ mặc định (chọn / sửa chữ)
+function clearEditorTool() {
+    if (isDrawingShape) {            // đang kéo dở nét vẽ thì hủy luôn
+        isDrawingShape = false;
+        currentDrawShape = null;
+        if (typeof redrawPageShapes === 'function') redrawPageShapes();
+    }
+    if (editorCurrentTool === 'text') return;
+    setEditorTool('text');
+    document.querySelectorAll('.rb-btn-large[data-tool], .rb-btn-compact[data-tool]')
+        .forEach(b => { if (b.dataset.tool !== 'region') b.classList.remove('active'); });
+}
+window.clearEditorTool = clearEditorTool;
+
 function getArrowGeometry(x1, y1, x2, y2, size) {
     const dx = x2 - x1, dy = y2 - y1;
     const len = Math.hypot(dx, dy);
@@ -1966,6 +1980,7 @@ document.addEventListener('keydown', function(e) {
     const t = e.target;
     if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
     const _k = e.key.toLowerCase();
+    if (e.key === 'Escape') { clearEditorTool(); return; }
     if ((e.ctrlKey || e.metaKey) && _k === 'o') {
         e.preventDefault();
         document.getElementById('editor-file-input')?.click();
@@ -1989,6 +2004,16 @@ document.addEventListener('keydown', function(e) {
         e.preventDefault();
         if (typeof editorExportPDF === 'function') editorExportPDF();
     }
+});
+
+// Click ra nền xám quanh trang (ngoài trang PDF) -> bỏ chọn công cụ vẽ.
+// Bấm vào thanh công cụ hoặc vẽ trên trang thì giữ nguyên công cụ.
+document.addEventListener('pointerdown', function (e) {
+    if (!document.getElementById('tab-editor')?.classList.contains('active')) return;
+    if (editorCurrentTool === 'text') return;
+    if (!e.target.closest || !e.target.closest('.editor-stage-scroll')) return;
+    if (e.target.closest('#editor-page-shell')) return;
+    clearEditorTool();
 });
 
 let drawEventsBound = false;
@@ -4658,3 +4683,256 @@ window.getEditorCurrentPdfBytes = async function() {
 };
 
 
+
+
+// =====================================================================
+// Menu chuột phải + phím tắt bổ sung cho tab "Chỉnh sửa PDF"
+// (Delete, Ctrl+X, Ctrl+A, phím mũi tên nhích, Ctrl+0 / Ctrl +/-, Ctrl+Shift+> <)
+// Dùng lại các hàm có sẵn: editorCopySelection, editorPasteClip, nút trên ribbon...
+// =====================================================================
+function editorDeleteSelection() {
+    const layer = document.getElementById('editor-text-layer');
+    if (!layer || !editorPdfJsDoc) return false;
+    let did = false;
+
+    // Xóa chữ gốc của PDF: đặt nội dung rỗng + che chữ cũ (giống khi xóa sạch ô nhập)
+    const clearOriginal = sp => {
+        const idx = parseInt(sp.getAttribute('data-tidx'), 10);
+        if (isNaN(idx) || !sp._item) return;
+        const tx = pdfjsLib.Util.transform(editorViewport.transform, sp._item.transform);
+        maskOriginalPosition(idx, sp._item, tx);
+        updateModifiedItemFormatting(idx, sp, {});
+        const m = modifiedTexts.find(t => t.key === `${editorPage}_${idx}`);
+        if (m) m.text = '';
+        sp.textContent = '';
+        sp.classList.remove('region-selected');
+        sp.classList.add('modified');
+        did = true;
+    };
+
+    const group = Array.from(layer.querySelectorAll('span[data-tidx].region-selected'));
+    if (group.length) {
+        group.forEach(clearOriginal);
+    } else if (editorSel && editorSel.page === editorPage) {
+        if (editorSel.type === 'tidx') {
+            const sp = layer.querySelector(`span[data-tidx="${editorSel.index}"]`);
+            if (sp) clearOriginal(sp);
+        } else if (editorSel.type === 'added') {
+            const before = addedTexts.length;
+            addedTexts = addedTexts.filter(a => a.id !== editorSel.id);
+            if (addedTexts.length !== before) { buildAddedTexts(layer); did = true; }
+        } else if (editorSel.type === 'img') {
+            const m = modifiedImages.find(i => i.key === editorSel.key);
+            if (m && m.isCopy) {
+                modifiedImages = modifiedImages.filter(i => i.key !== editorSel.key);
+                layer.querySelector(`.editor-img-box[data-img-key="${editorSel.key}"]`)?.remove();
+                did = true;
+            } else if (window.toast) {
+                window.toast('Chỉ xóa được bản sao của ảnh. Với ảnh gốc hãy dùng công cụ Che thông tin.', 'info', 2500);
+            }
+        }
+    }
+    if (did) {
+        editorSel = null;
+        applySelHighlight();
+        recordHistory();
+    }
+    return did;
+}
+
+function editorCutSelection() {
+    if (editorCopySelection()) return editorDeleteSelection();
+    return false;
+}
+
+function editorSelectAllText() {
+    const layer = document.getElementById('editor-text-layer');
+    if (!layer) return 0;
+    const spans = Array.from(layer.querySelectorAll('span[data-tidx]')).filter(s => (s.textContent || '').trim());
+    spans.forEach(s => s.classList.add('region-selected'));
+    editorSel = null;
+    applySelHighlight();
+    if (window.toast) window.toast(`Đã chọn ${spans.length} dòng chữ trên trang`, 'info', 1500);
+    return spans.length;
+}
+
+// Nhích đối tượng đang chọn bằng phím mũi tên (Shift = nhích 10px)
+function editorNudgeSelection(dx, dy) {
+    const layer = document.getElementById('editor-text-layer');
+    if (!layer || !editorViewport) return false;
+    const group = Array.from(layer.querySelectorAll('span[data-tidx].region-selected'));
+    const moveOriginal = sp => {
+        const idx = parseInt(sp.getAttribute('data-tidx'), 10);
+        if (isNaN(idx) || !sp._item) return false;
+        sp.style.left = (parseFloat(sp.style.left) || 0) + dx + 'px';
+        sp.style.top = (parseFloat(sp.style.top) || 0) + dy + 'px';
+        sp.classList.add('modified');
+        const tx = pdfjsLib.Util.transform(editorViewport.transform, sp._item.transform);
+        maskOriginalPosition(idx, sp._item, tx);
+        savePositionAndText(sp, sp._item, idx);
+        return true;
+    };
+    if (group.length) return group.map(moveOriginal).some(Boolean);
+    if (!editorSel || editorSel.page !== editorPage) return false;
+    if (editorSel.type === 'tidx') {
+        const sp = layer.querySelector(`span[data-tidx="${editorSel.index}"]`);
+        return sp ? moveOriginal(sp) : false;
+    }
+    if (editorSel.type === 'added') {
+        const a = addedTexts.find(t => t.id === editorSel.id);
+        if (!a) return false;
+        a.x += dx / editorScale;
+        a.y -= dy / editorScale;
+        buildAddedTexts(layer);
+        applySelHighlight();
+        recordHistory();
+        return true;
+    }
+    return false;
+}
+
+(function bindEditorQuickActions() {
+    const $ = id => document.getElementById(id);
+    const editorOpen = () => !!$('tab-editor')?.classList.contains('active');
+    const typing = t => !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
+    const hasSelection = () => !!(document.querySelector('#editor-text-layer span[data-tidx].region-selected') ||
+                                  (editorSel && editorSel.page === editorPage));
+    const press = id => $(id)?.click();
+
+    // ---------- Phím tắt bổ sung ----------
+    document.addEventListener('keydown', function (e) {
+        if (!editorOpen() || !editorPdfJsDoc) return;
+        if (typing(e.target) || document.querySelector('#editor-text-layer .editing-input')) return;
+        const mod = e.ctrlKey || e.metaKey;
+        const k = e.key;
+        try {
+            if (!mod && (k === 'Delete' || k === 'Backspace')) {
+                if (editorCurrentTool === 'text' && editorDeleteSelection()) e.preventDefault();
+            } else if (mod && !e.shiftKey && k.toLowerCase() === 'x') {
+                if (editorCutSelection()) e.preventDefault();
+            } else if (mod && !e.shiftKey && k.toLowerCase() === 'a') {
+                e.preventDefault();
+                editorSelectAllText();
+            } else if (mod && k === '0') {
+                e.preventDefault();
+                if (typeof editorZoom100 === 'function') editorZoom100();
+            } else if (mod && (k === '+' || k === '=')) {
+                e.preventDefault();
+                if (typeof editorZoomBy === 'function') editorZoomBy(1);
+            } else if (mod && (k === '-' || k === '_')) {
+                e.preventDefault();
+                if (typeof editorZoomBy === 'function') editorZoomBy(-1);
+            } else if (mod && (k === '>' || k === ']')) {
+                e.preventDefault(); press('rb-font-inc');
+            } else if (mod && (k === '<' || k === '[')) {
+                e.preventDefault(); press('rb-font-dec');
+            } else if (!mod && !e.altKey && editorCurrentTool === 'text' && k.startsWith('Arrow')) {
+                const step = e.shiftKey ? 10 : 1;
+                const dx = k === 'ArrowLeft' ? -step : k === 'ArrowRight' ? step : 0;
+                const dy = k === 'ArrowUp' ? -step : k === 'ArrowDown' ? step : 0;
+                if (hasSelection() && editorNudgeSelection(dx, dy)) e.preventDefault();
+            }
+        } catch (err) { console.error('Phím tắt trình chỉnh sửa:', err); }
+    });
+
+    // ---------- Menu chuột phải ----------
+    let menu = null;
+    function closeMenu() { if (menu) { menu.remove(); menu = null; } }
+
+    function ensureStyle() {
+        if ($('editor-ctx-style')) return;
+        const st = document.createElement('style');
+        st.id = 'editor-ctx-style';
+        st.textContent = `
+        .ed-ctx{position:fixed;z-index:100000;min-width:220px;padding:6px;border-radius:10px;
+          background:#fff;color:#202124;border:1px solid #d0d5dd;box-shadow:0 10px 30px rgba(0,0,0,.18);
+          font:13px/1.2 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;user-select:none}
+        .ed-ctx button{display:flex;align-items:center;justify-content:space-between;gap:24px;width:100%;
+          padding:8px 10px;border:0;border-radius:6px;background:transparent;color:inherit;font:inherit;
+          text-align:left;cursor:pointer}
+        .ed-ctx button:hover:not(:disabled),.ed-ctx button:focus-visible{background:#e8f0fe;outline:none}
+        .ed-ctx button:disabled{opacity:.4;cursor:default}
+        .ed-ctx kbd{font:11px ui-monospace,Consolas,monospace;opacity:.6}
+        .ed-ctx hr{border:0;border-top:1px solid #e4e7ec;margin:5px 2px}
+        html[data-theme="dark"] .ed-ctx{background:#24272b;color:#e6e8eb;border-color:#3a3f45}
+        html[data-theme="dark"] .ed-ctx button:hover:not(:disabled),
+        html[data-theme="dark"] .ed-ctx button:focus-visible{background:#33507a}
+        html[data-theme="dark"] .ed-ctx hr{border-top-color:#3a3f45}`;
+        document.head.appendChild(st);
+    }
+
+    function openMenu(x, y) {
+        closeMenu();
+        ensureStyle();
+        const sel = hasSelection();
+        const items = [
+            ['Cắt', 'Ctrl+X', () => editorCutSelection(), !sel],
+            ['Sao chép', 'Ctrl+C', () => editorCopySelection(), !sel],
+            ['Dán', 'Ctrl+V', () => editorPasteClip(), !editorClip],
+            '-',
+            ['Đậm', 'Ctrl+B', () => editorToggleBold(), !sel],
+            ['Nghiêng', 'Ctrl+I', () => editorToggleItalic(), !sel],
+            ['Tăng cỡ chữ', 'Ctrl+>', () => press('rb-font-inc'), !sel],
+            ['Giảm cỡ chữ', 'Ctrl+<', () => press('rb-font-dec'), !sel],
+            '-',
+            ['Xóa', 'Delete', () => editorDeleteSelection(), !sel],
+            ['Chọn tất cả chữ trên trang', 'Ctrl+A', () => editorSelectAllText(), false],
+            ['Tìm kiếm…', 'Ctrl+F', () => press('rb-find-btn'), false],
+            '-',
+            ['Hoàn tác', 'Ctrl+Z', () => editorUndo(), false],
+            ['Làm lại', 'Ctrl+Y', () => editorRedo(), false]
+        ];
+        menu = document.createElement('div');
+        menu.className = 'ed-ctx';
+        menu.setAttribute('role', 'menu');
+        items.forEach(it => {
+            if (it === '-') { menu.appendChild(document.createElement('hr')); return; }
+            const [label, keys, fn, disabled] = it;
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.setAttribute('role', 'menuitem');
+            b.disabled = !!disabled;
+            b.innerHTML = '<span></span><kbd></kbd>';
+            b.firstChild.textContent = label;
+            b.lastChild.textContent = keys;
+            b.addEventListener('click', () => {
+                closeMenu();
+                try { fn(); } catch (err) { console.error('Menu chuột phải:', err); }
+            });
+            menu.appendChild(b);
+        });
+        document.body.appendChild(menu);
+        const r = menu.getBoundingClientRect();
+        menu.style.left = Math.max(4, Math.min(x, window.innerWidth - r.width - 4)) + 'px';
+        menu.style.top = Math.max(4, Math.min(y, window.innerHeight - r.height - 4)) + 'px';
+    }
+
+    document.addEventListener('contextmenu', function (e) {
+        if (!editorOpen() || !editorPdfJsDoc) return;
+        if (!e.target.closest || !e.target.closest('#editor-page-shell')) return;
+        if (e.target.closest('.editing-input')) return;            // giữ menu gốc của trình duyệt khi đang gõ chữ
+        if (editorCurrentTool !== 'text') return;                  // đang dùng công cụ vẽ: không chặn
+        e.preventDefault();
+
+        // Chọn đối tượng dưới con trỏ (trừ khi nó đã nằm trong nhóm đang chọn)
+        const sp = e.target.closest('span');
+        const box = e.target.closest('.editor-img-box');
+        const inGroup = sp && sp.classList.contains('region-selected');
+        if (!inGroup) {
+            document.querySelectorAll('#editor-text-layer span[data-tidx].region-selected')
+                .forEach(s => s.classList.remove('region-selected'));
+            if (sp && sp.hasAttribute('data-added-id')) editorSel = { type: 'added', page: editorPage, id: sp.getAttribute('data-added-id') };
+            else if (sp && sp.hasAttribute('data-tidx')) editorSel = { type: 'tidx', page: editorPage, index: parseInt(sp.getAttribute('data-tidx'), 10) };
+            else if (box && box.hasAttribute('data-img-key')) editorSel = { type: 'img', page: editorPage, key: box.getAttribute('data-img-key') };
+            else editorSel = null;
+            applySelHighlight();
+        }
+        openMenu(e.clientX, e.clientY);
+    });
+
+    document.addEventListener('pointerdown', e => { if (menu && !menu.contains(e.target)) closeMenu(); }, true);
+    document.addEventListener('keydown', e => { if (menu && e.key === 'Escape') { e.stopPropagation(); closeMenu(); } }, true);
+    window.addEventListener('blur', closeMenu);
+    window.addEventListener('resize', closeMenu);
+    document.addEventListener('scroll', closeMenu, true);
+})();
