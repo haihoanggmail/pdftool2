@@ -1,0 +1,37 @@
+/* ==========================================================================
+   Trợ năng: vòng tiêu điểm khi dùng bàn phím, liên kết "bỏ qua", tương phản chế độ tối
+   ========================================================================== */
+:root { --primary-text: var(--primary); }
+html[data-theme="dark"] {
+  --primary-text: #6cb4ff;      /* --primary làm chữ trên nền tối chỉ đạt 2.8–3.4:1; màu này đạt ≥ 6.7:1 */
+  --success: #137a43;           /* chữ trắng trên nền xanh lá: 4.40 -> ≥ 4.5 */
+}
+
+/* Vòng tiêu điểm rõ ràng, chỉ hiện khi dùng bàn phím (không làm xấu khi bấm chuột) */
+:where(button, a[href], input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--primary-text, #0078d4);
+  outline-offset: 2px;
+}
+html[data-theme="dark"] :where(button, a[href], input, select, textarea, summary, [tabindex]):focus-visible { outline-color: #6cb4ff; }
+.tab-btn:focus-visible, .menu-item:focus-visible { outline-offset: -2px; }
+
+/* Liên kết "Bỏ qua đến nội dung chính": ẩn cho đến khi nhận tiêu điểm */
+.skip-link {
+  position: fixed; top: 8px; left: 8px; z-index: 100001;
+  padding: 8px 14px; border-radius: 6px; background: #005a9e; color: #fff; font-weight: 700; text-decoration: none;
+  transform: translateY(-200%);
+}
+.skip-link:focus { transform: translateY(0); }
+
+/* Chữ dùng màu chủ đạo trên nền tối: đổi sang màu sáng hơn để đọc được */
+html[data-theme="dark"] .card-title,
+html[data-theme="dark"] .merge-preview-title,
+html[data-theme="dark"] .brush-status,
+html[data-theme="dark"] .region-status,
+html[data-theme="dark"] .menu-sep[style*="--primary"],
+html[data-theme="dark"] .menu-item[style*="--primary"] { color: var(--primary-text) !important; }
+
+/* Giảm chuyển động nếu người dùng yêu cầu */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+}
