@@ -2,7 +2,7 @@
 // - Trang chính: ưu tiên mạng (luôn nhận bản mới sau khi bạn cập nhật), mất mạng thì dùng bản đã lưu.
 // - Thư viện CDN, wasm, dữ liệu OCR...: lưu lại ở lần dùng đầu, các lần sau (và khi offline) lấy từ bộ nhớ.
 // Khi sửa file này hoặc muốn ép mọi người tải lại toàn bộ, hãy tăng số phiên bản bên dưới.
-const VERSION = 'pdftool-v6';
+const VERSION = 'pdftool-v7';
 const CORE = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png', './logo.png',
   './vendor/pdf-lib.min.js', './vendor/fontkit.umd.min.js', './vendor/pdf.min.js', './vendor/pdf.worker.min.js'];
 
