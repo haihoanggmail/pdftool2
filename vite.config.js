@@ -1,4 +1,6 @@
 import { defineConfig } from 'vite';
+import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { join } from 'node:path';
 import trackHandler from './api/track.js';
 import statsHandler from './api/stats.js';
 
@@ -54,9 +56,26 @@ function apiPlugin() {
   };
 }
 
+
+// Gắn mã bản dựng vào service worker: mỗi lần `npm run build` ra một phiên bản bộ nhớ mới (xem public/sw.js)
+function swVersionPlugin() {
+  let outDir = 'dist';
+  return {
+    name: 'sw-build-version',
+    apply: 'build',
+    configResolved(cfg) { outDir = cfg.build.outDir; },
+    closeBundle() {
+      const file = join(outDir, 'sw.js');
+      if (!existsSync(file)) return;
+      const stamp = (process.env.VERCEL_GIT_COMMIT_SHA || '').slice(0, 8) || Date.now().toString(36);
+      writeFileSync(file, readFileSync(file, 'utf8').replace(/__BUILD__/g, stamp));
+    },
+  };
+}
+
 export default defineConfig({
   base: './',
-  plugins: [apiPlugin()],
+  plugins: [apiPlugin(), swVersionPlugin()],
   server: {
     host: '0.0.0.0',
     port: 3000,
