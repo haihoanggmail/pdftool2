@@ -1872,9 +1872,38 @@ function clearEditorRegionSelection() {
     setEditorRegionLocked(false);
 }
 
-// Cơ chế chọn vùng cũ (khung #editor-region-selection) đã bỏ: nó gọi preventDefault ở pointerdown nên trình duyệt
-// không bắn mousedown, làm khung chọn mới (bindTextRegionSelection) không chạy. Giữ hàm rỗng để các nơi gọi cũ không lỗi.
-function initEditorRegionSelection() {}
+function initEditorRegionSelection() {
+    const shell = document.getElementById('editor-page-shell');
+    const box = document.getElementById('editor-region-selection');
+    if (!shell || !box || shell.dataset.regionSelectionBound) return;
+    shell.dataset.regionSelectionBound = '1';
+    shell.addEventListener('pointerdown', e => {
+        if (editorCurrentTool !== 'text' || e.button !== 0) return;
+        // Text/image objects keep their normal drag/edit behavior. Empty canvas starts a region drag.
+        if (e.target.closest('.editor-text-layer span, .editing-input, .editor-img-box')) return;
+        e.preventDefault();
+        isSelectingEditorRegion = true;
+        editorSelectionStart = getCanvasPos(e, document.getElementById('editor-draw-canvas'));
+        shell.setPointerCapture?.(e.pointerId);
+        shell.classList.add('region-selecting');
+        setEditorRegionLocked(true);
+        box.style.display = 'block';
+        box.style.left = editorSelectionStart.x + 'px';
+        box.style.top = editorSelectionStart.y + 'px';
+        box.style.width = '0px';
+        box.style.height = '0px';
+    });
+    shell.addEventListener('pointermove', e => {
+        if (!isSelectingEditorRegion) return;
+        const pos = getCanvasPos(e, document.getElementById('editor-draw-canvas'));
+        const left = Math.min(editorSelectionStart.x, pos.x), top = Math.min(editorSelectionStart.y, pos.y);
+        box.style.left = left + 'px'; box.style.top = top + 'px';
+        box.style.width = Math.abs(pos.x - editorSelectionStart.x) + 'px';
+        box.style.height = Math.abs(pos.y - editorSelectionStart.y) + 'px';
+    });
+    shell.addEventListener('pointerup', clearEditorRegionSelection);
+    shell.addEventListener('pointercancel', clearEditorRegionSelection);
+}
 
 function setEditorTool(toolName) {
     editorCurrentTool = toolName;
@@ -2380,26 +2409,6 @@ async function buildImageBoxes(page, textLayerDiv, pdfCanvas) {
         const showCrop = () => {
             box.style.backgroundImage = `url(${cropCanvasToDataURL(pdfCanvas, r)})`;
             box.classList.add('modified');
-        };
-        // Được dùng khi ảnh nằm trọn trong khung chọn và di chuyển cùng một nhóm.
-        box._prepareForGroupMove = () => {
-            if (!prepared) {
-                bgColor = sampleBgAround(pdfCanvas, r);
-                showCrop();
-                addMask(bgColor);
-                prepared = true;
-            }
-        };
-        box._commitGroupMove = () => {
-            const left = Number.parseFloat(box.style.left) || 0;
-            const top = Number.parseFloat(box.style.top) || 0;
-            const [newX, newY] = editorViewport.convertToPdfPoint(left, top + r.height);
-            const data = { key, page: editorPage, _seq: ++editorSeq,
-                x0: b.x0, y0: b.y0, x1: b.x1, y1: b.y1,
-                newX, newY, width: b.x1 - b.x0, height: b.y1 - b.y0,
-                htmlLeft: left, htmlTop: top, bgColor: bgColor || '#ffffff' };
-            const i = modifiedImages.findIndex(m => m.key === key);
-            if (i >= 0) modifiedImages[i] = data; else modifiedImages.push(data);
         };
         if (saved) {
             {
@@ -3233,217 +3242,111 @@ window.editorSetTextColor = editorSetTextColor;
     });
 })();
 
-// Chọn vùng an toàn: chỉ chọn đối tượng có TOÀN BỘ khung bao nằm trong vùng kéo.
-// Chữ PDF gốc, chữ thêm và ảnh đều chọn/di chuyển được theo nhóm.
-// Dùng Pointer Events (không dùng mousedown): trước đây một handler pointerdown cũ gọi preventDefault nên trình duyệt
-// không bắn mousedown nữa và khung chọn trên vùng trống không chạy. Cơ chế cũ đó đã được bỏ (initEditorRegionSelection).
-// Các tính năng khác dùng chung vùng chọn này qua window.editorRegion (xem phần phím tắt / menu chuột phải ở cuối file).
+// Chọn nhiều dòng bằng cách kéo khung trống; chỉ chọn các dòng nằm HOÀN TOÀN trong khung.
+// Kéo một dòng đã chọn sẽ di chuyển cả nhóm, không làm mất font/màu gốc.
 (function bindTextRegionSelection() {
     const layer = document.getElementById('editor-text-layer');
-    if (!layer || layer.dataset.safeRegionSelectionBound) return;
-    layer.dataset.safeRegionSelectionBound = '1';
-
-    const OBJ = 'span[data-tidx], span[data-added-id], .editor-img-box';
+    if (!layer) return;
     let selected = new Set();
     let start = null;
-    let rectEl = null;
-    let draggingGroup = false;
+    let rect = null;
+    let groupDragging = false;
     let dragStart = null;
     let initial = [];
-    let didMove = false;
-    let activePointer = null;
-    const MIN_SELECT_SIZE = 3;
 
     function getBox(el) {
-        const left = Number.parseFloat(el.style.left) || 0;
-        const top = Number.parseFloat(el.style.top) || 0;
-        return { left, top, right: left + el.offsetWidth, bottom: top + el.offsetHeight,
-            width: el.offsetWidth, height: el.offsetHeight };
-    }
-    function selectableObjects() {
-        return Array.from(layer.querySelectorAll(OBJ))
-            .filter(el => el.offsetWidth > 0 && el.offsetHeight > 0 &&
-                (el.matches('.editor-img-box') || (el.textContent || '').trim()));
-    }
-    function prune() {
-        let changed = false;
-        selected.forEach(el => { if (!el.isConnected) { selected.delete(el); changed = true; } });
-        if (changed) updateStatus();
+        const l = parseFloat(el.style.left) || 0;
+        const t = parseFloat(el.style.top) || 0;
+        return { left:l, top:t, right:l + el.offsetWidth, bottom:t + el.offsetHeight };
     }
     function setSelected(nodes) {
         selected = new Set(nodes);
-        layer.querySelectorAll('.region-selected').forEach(el => el.classList.remove('region-selected'));
-        selected.forEach(el => el.classList.add('region-selected'));
-        updateStatus();
-    }
-    function updateStatus() {
-        const status = document.getElementById('editor-region-status');
-        if (status) status.textContent = selected.size
-            ? `Đã chọn ${selected.size} đối tượng · Kéo một đối tượng được chọn để di chuyển cả nhóm`
-            : 'Kéo chuột trên vùng trống để chọn · Chỉ chọn chữ/hình nằm trọn trong khung';
-        const clearBtn = document.getElementById('editor-clear-region-btn');
-        if (clearBtn) clearBtn.disabled = selected.size === 0;
+        layer.querySelectorAll('span[data-tidx]').forEach(el => el.classList.toggle('region-selected', selected.has(el)));
     }
     function ensureRect() {
-        if (rectEl && rectEl.isConnected) return rectEl;
-        rectEl = document.createElement('div');
-        rectEl.className = 'editor-region-select';
-        rectEl.setAttribute('aria-hidden', 'true');
-        rectEl.style.cssText = 'position:absolute;border:2px solid #2563eb;background:rgba(37,99,235,.12);box-sizing:border-box;z-index:3000;pointer-events:none;display:none;';
-        layer.appendChild(rectEl);
-        return rectEl;
+        if (rect) return rect;
+        rect = document.createElement('div');
+        rect.className = 'editor-region-select';
+        rect.style.cssText = 'position:absolute;border:1px dashed #0078d4;background:rgba(0,120,212,.12);z-index:200;pointer-events:none;display:none;';
+        layer.appendChild(rect);
+        return rect;
     }
-    function localPoint(e) {
-        const bounds = layer.getBoundingClientRect();
-        return { x: e.clientX - bounds.left, y: e.clientY - bounds.top };
-    }
-    function isFullyInside(box, area) {
-        // Không dùng giao nhau (intersects): nếu chạm/cắt ranh giới thì KHÔNG chọn.
-        return box.left >= area.left && box.top >= area.top &&
-            box.right <= area.right && box.bottom <= area.bottom;
-    }
-
-    // ---------- Kéo cả nhóm ----------
-    function beginGroupDrag(e, target) {
-        e.preventDefault();      // chặn luôn mousedown/drag riêng lẻ của từng đối tượng
-        e.stopPropagation();
-        draggingGroup = true;
-        didMove = false;
-        activePointer = e.pointerId;
-        dragStart = { x: e.clientX, y: e.clientY };
-        initial = Array.from(selected).map(el => ({ el, left: Number.parseFloat(el.style.left) || 0, top: Number.parseFloat(el.style.top) || 0 }));
-        document.body.style.userSelect = 'none';
-    }
-    function moveGroup(e) {
-        const dx = e.clientX - dragStart.x, dy = e.clientY - dragStart.y;
-        if (!didMove && Math.abs(dx) < 1 && Math.abs(dy) < 1) return;
-        didMove = true;
-        initial.forEach(o => {
-            const el = o.el;
-            if (!el.isConnected) return;
-            if (el.matches('span[data-tidx]') && el._item && !el.dataset.groupMaskApplied) {
-                const ix = Number(el.dataset.tidx);
-                try { maskOriginalPosition(ix, el._item, pdfjsLib.Util.transform(editorViewport.transform, el._item.transform)); } catch (_) {}
-                el.dataset.groupMaskApplied = '1';
-            }
-            if (el.matches('.editor-img-box') && typeof el._prepareForGroupMove === 'function') {
-                try { el._prepareForGroupMove(); } catch (_) {}
-            }
-            el.style.left = (o.left + dx) + 'px';
-            el.style.top = (o.top + dy) + 'px';
-            el.classList.add('modified', 'dragging');
-        });
-    }
-    function finishGroupDrag() {
-        draggingGroup = false;
-        document.body.style.userSelect = '';
-        initial.forEach(o => {
-            const el = o.el;
-            if (!el.isConnected) return;
-            el.classList.remove('dragging');
-            if (!didMove) return;
-            try {
-                if (el.matches('span[data-tidx]') && el._item) {
-                    savePositionAndText(el, el._item, Number(el.dataset.tidx));
-                } else if (el.matches('span[data-added-id]')) {
-                    const a = addedTexts.find(t => String(t.id) === el.dataset.addedId);
-                    if (a && editorViewport) {
-                        const baseline = (Number.parseFloat(el.style.top) || 0) + addedK(fontKeyOf(a)) * a.fontSize * editorScale;
-                        const p = editorViewport.convertToPdfPoint(Number.parseFloat(el.style.left) || 0, baseline);
-                        a.x = p[0]; a.y = p[1];
+    layer.addEventListener('mousedown', e => {
+        if (e.button !== 0 || editorCurrentTool !== 'text') return;
+        const target = e.target.closest ? e.target.closest('span[data-tidx]') : null;
+        if (selected.size && target && selected.has(target)) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            groupDragging = true;
+            dragStart = { x:e.clientX, y:e.clientY };
+            initial = Array.from(selected).map(el => ({el, left:parseFloat(el.style.left)||0, top:parseFloat(el.style.top)||0}));
+            document.body.style.userSelect = 'none';
+            const move = ev => {
+                const dx = ev.clientX - dragStart.x, dy = ev.clientY - dragStart.y;
+                if (Math.abs(dx) < 1 && Math.abs(dy) < 1) return;
+                initial.forEach(o => {
+                    o.el.style.left = (o.left + dx) + 'px';
+                    o.el.style.top = (o.top + dy) + 'px';
+                    o.el.classList.add('modified');
+                    o.el.classList.add('dragging');
+                    const ix = Number(o.el.getAttribute('data-tidx'));
+                    if (o.el._item) {
+                        const tx = pdfjsLib.Util.transform(editorViewport.transform, o.el._item.transform);
+                        maskOriginalPosition(ix, o.el._item, tx);
                     }
-                } else if (el.matches('.editor-img-box') && typeof el._commitGroupMove === 'function') {
-                    el._commitGroupMove();
-                }
-            } catch (err) { console.error('Không lưu được vị trí đối tượng:', err); }
-        });
-        layer.querySelectorAll('[data-group-mask-applied]').forEach(el => delete el.dataset.groupMaskApplied);
-        if (didMove) {
-            if (typeof recordHistory === 'function') recordHistory();
-            // Thả chuột xong trình duyệt còn bắn "click" lên đối tượng vừa kéo -> nuốt đi để không mở ô sửa chữ
-            const swallow = ev => { ev.stopPropagation(); ev.preventDefault(); };
-            layer.addEventListener('click', swallow, true);
-            setTimeout(() => layer.removeEventListener('click', swallow, true), 60);
-        }
-        didMove = false;
-        initial = [];
-        updateStatus();
-    }
-
-    // ---------- Khung chọn ----------
-    function beginRegionSelect(e) {
-        if (e.button !== 0 || editorCurrentTool !== 'text' || e.pointerType === 'touch') return;
-        if (e.target.closest && e.target.closest('.editing-input')) return;
-        const target = e.target.closest ? e.target.closest(OBJ) : null;
-        if (target) {
-            if (selected.has(target)) { beginGroupDrag(e, target); return; }
-            // Bấm vào đối tượng chưa được chọn: giữ nguyên thao tác chọn/sửa/kéo đơn lẻ có sẵn.
-            if (!e.shiftKey && selected.size) setSelected([]);
+                });
+            };
+            const up = () => {
+                document.removeEventListener('mousemove', move);
+                document.removeEventListener('mouseup', up);
+                document.body.style.userSelect = '';
+                groupDragging = false;
+                initial.forEach(o => {
+                    o.el.classList.remove('dragging');
+                    const ix = Number(o.el.getAttribute('data-tidx'));
+                    if (o.el._item) savePositionAndText(o.el, o.el._item, ix);
+                });
+                // Giữ nguyên các node đang chọn để có thể kéo cả nhóm thêm lần nữa.
+            };
+            document.addEventListener('mousemove', move);
+            document.addEventListener('mouseup', up);
             return;
         }
-        e.preventDefault();
-        e.stopPropagation();
-        if (!e.shiftKey) { editorSel = null; if (typeof applySelHighlight === 'function') applySelHighlight(); }
-        activePointer = e.pointerId;
-        start = localPoint(e);
-        const box = ensureRect();
-        Object.assign(box.style, { left: start.x + 'px', top: start.y + 'px', width: '0px', height: '0px', display: 'block' });
-        if (!e.shiftKey) setSelected([]);
-    }
-    function moveMarquee(e) {
-        const p = localPoint(e), box = ensureRect();
-        Object.assign(box.style, {
-            left: Math.min(start.x, p.x) + 'px', top: Math.min(start.y, p.y) + 'px',
-            width: Math.abs(p.x - start.x) + 'px', height: Math.abs(p.y - start.y) + 'px'
-        });
-    }
-    function endMarquee(e) {
-        const p = localPoint(e);
-        const area = { left: Math.min(start.x, p.x), top: Math.min(start.y, p.y),
-            right: Math.max(start.x, p.x), bottom: Math.max(start.y, p.y) };
-        ensureRect().style.display = 'none';
-        const hasArea = area.right - area.left >= MIN_SELECT_SIZE && area.bottom - area.top >= MIN_SELECT_SIZE;
-        const inside = hasArea ? selectableObjects().filter(el => isFullyInside(getBox(el), area)) : [];
-        setSelected(e.shiftKey ? [...selected, ...inside] : inside);
-        start = null;
-        if (hasArea && !inside.length && !e.shiftKey && typeof window.toast === 'function') {
-            window.toast('Không có đối tượng nằm trọn trong khung. Hãy kéo khung rộng hơn.', 'info', 2200);
+        // Bắt đầu khung chọn khi nhấn vào vùng trống, không phải chữ/ảnh.
+        if (target || (e.target.closest && e.target.closest('.editor-img-box')) || e.target.closest('.editing-input')) {
+            if (!e.shiftKey && !target) setSelected([]);
+            return;
         }
-    }
-    function onPointerMove(e) {
-        if (activePointer === null || e.pointerId !== activePointer) return;
-        if (draggingGroup) moveGroup(e);
-        else if (start) moveMarquee(e);
-    }
-    function onPointerUp(e) {
-        if (activePointer === null || e.pointerId !== activePointer) return;
-        if (draggingGroup) finishGroupDrag();
-        else if (start) endMarquee(e);
-        activePointer = null;
-    }
-    function clearRegionSelection(silent) {
-        const had = selected.size > 0;
-        setSelected([]);
-        if (rectEl) rectEl.style.display = 'none';
-        start = null;
-        if (had && !silent && typeof window.toast === 'function') window.toast('Đã bỏ chọn vùng', 'info', 1200);
-    }
-
-    // Dùng chung cho phím tắt / menu chuột phải (Delete, nhích bằng mũi tên, Ctrl+A...)
-    window.editorRegion = {
-        nodes() { prune(); return Array.from(selected); },
-        set: setSelected,
-        clear: clearRegionSelection,
-        selectAll() { setSelected(selectableObjects()); return selected.size; }
-    };
-    window.clearEditorRegionSelection = function (silent) { clearRegionSelection(silent === true); };
-
-    layer.addEventListener('pointerdown', beginRegionSelect, true);
-    document.addEventListener('pointermove', onPointerMove);
-    document.addEventListener('pointerup', onPointerUp);
-    document.addEventListener('pointercancel', onPointerUp);
-    document.addEventListener('keydown', e => { if (e.key === 'Escape' && selected.size) clearRegionSelection(); });
-    updateStatus();
+        const bounds = layer.getBoundingClientRect();
+        start = { x:e.clientX - bounds.left, y:e.clientY - bounds.top };
+        const box = ensureRect();
+        box.style.left = start.x + 'px'; box.style.top = start.y + 'px';
+        box.style.width = '0px'; box.style.height = '0px'; box.style.display = 'block';
+        if (!e.shiftKey) setSelected([]);
+        e.preventDefault();
+        const move = ev => {
+            const x = ev.clientX - bounds.left, y = ev.clientY - bounds.top;
+            box.style.left = Math.min(start.x,x) + 'px';
+            box.style.top = Math.min(start.y,y) + 'px';
+            box.style.width = Math.abs(x-start.x) + 'px';
+            box.style.height = Math.abs(y-start.y) + 'px';
+        };
+        const up = ev => {
+            document.removeEventListener('mousemove', move);
+            document.removeEventListener('mouseup', up);
+            const x = ev.clientX - bounds.left, y = ev.clientY - bounds.top;
+            const r = {left:Math.min(start.x,x), top:Math.min(start.y,y), right:Math.max(start.x,x), bottom:Math.max(start.y,y)};
+            box.style.display = 'none';
+            const inside = Array.from(layer.querySelectorAll('span[data-tidx]')).filter(el => {
+                const b = getBox(el);
+                return b.left >= r.left && b.top >= r.top && b.right <= r.right && b.bottom <= r.bottom && (el.textContent || '').trim();
+            });
+            setSelected(e.shiftKey ? [...selected, ...inside] : inside);
+            start = null;
+        };
+        document.addEventListener('mousemove', move);
+        document.addEventListener('mouseup', up);
+    });
 })();
 
 function editorCopySelection() {
@@ -4785,32 +4688,12 @@ window.getEditorCurrentPdfBytes = async function() {
 // =====================================================================
 // Menu chuột phải + phím tắt bổ sung cho tab "Chỉnh sửa PDF"
 // (Delete, Ctrl+X, Ctrl+A, phím mũi tên nhích, Ctrl+0 / Ctrl +/-, Ctrl+Shift+> <)
-// Dùng chung vùng chọn nhiều đối tượng (window.editorRegion) với thao tác kéo khung ở trên:
-// chữ PDF gốc, chữ thêm và ảnh. Dùng lại các hàm có sẵn: editorCopySelection, editorPasteClip, nút trên ribbon...
+// Dùng lại các hàm có sẵn: editorCopySelection, editorPasteClip, nút trên ribbon...
 // =====================================================================
-function editorRegionNodes() {
-    return (window.editorRegion ? window.editorRegion.nodes() : []).filter(n => n.isConnected);
-}
-
-// Các phần tử đang được chọn: cả nhóm (kéo khung) hoặc đối tượng đơn (editorSel)
-function editorSelectedElements() {
-    const nodes = editorRegionNodes();
-    if (nodes.length) return nodes;
-    const layer = document.getElementById('editor-text-layer');
-    if (!layer || !editorSel || editorSel.page !== editorPage) return [];
-    let el = null;
-    if (editorSel.type === 'tidx') el = layer.querySelector(`span[data-tidx="${editorSel.index}"]`);
-    else if (editorSel.type === 'added') el = layer.querySelector(`span[data-added-id="${editorSel.id}"]`);
-    else if (editorSel.type === 'img') el = layer.querySelector(`.editor-img-box[data-img-key="${editorSel.key}"]`);
-    return el ? [el] : [];
-}
-
 function editorDeleteSelection() {
     const layer = document.getElementById('editor-text-layer');
     if (!layer || !editorPdfJsDoc) return false;
-    const els = editorSelectedElements();
-    if (!els.length) return false;
-    let did = false, skippedImg = 0, addedChanged = false;
+    let did = false;
 
     // Xóa chữ gốc của PDF: đặt nội dung rỗng + che chữ cũ (giống khi xóa sạch ô nhập)
     const clearOriginal = sp => {
@@ -4826,28 +4709,28 @@ function editorDeleteSelection() {
         sp.classList.add('modified');
         did = true;
     };
-    els.forEach(el => {
-        if (el.matches('span[data-tidx]')) {
-            clearOriginal(el);
-        } else if (el.matches('span[data-added-id]')) {
-            const id = el.getAttribute('data-added-id');
+
+    const group = Array.from(layer.querySelectorAll('span[data-tidx].region-selected'));
+    if (group.length) {
+        group.forEach(clearOriginal);
+    } else if (editorSel && editorSel.page === editorPage) {
+        if (editorSel.type === 'tidx') {
+            const sp = layer.querySelector(`span[data-tidx="${editorSel.index}"]`);
+            if (sp) clearOriginal(sp);
+        } else if (editorSel.type === 'added') {
             const before = addedTexts.length;
-            addedTexts = addedTexts.filter(a => String(a.id) !== String(id));
-            if (addedTexts.length !== before) { addedChanged = true; did = true; }
-        } else if (el.matches('.editor-img-box')) {
-            const key = el.getAttribute('data-img-key');
-            const m = modifiedImages.find(i => i.key === key);
+            addedTexts = addedTexts.filter(a => a.id !== editorSel.id);
+            if (addedTexts.length !== before) { buildAddedTexts(layer); did = true; }
+        } else if (editorSel.type === 'img') {
+            const m = modifiedImages.find(i => i.key === editorSel.key);
             if (m && m.isCopy) {
-                modifiedImages = modifiedImages.filter(i => i.key !== key);
-                el.remove();
+                modifiedImages = modifiedImages.filter(i => i.key !== editorSel.key);
+                layer.querySelector(`.editor-img-box[data-img-key="${editorSel.key}"]`)?.remove();
                 did = true;
-            } else skippedImg++;
+            } else if (window.toast) {
+                window.toast('Chỉ xóa được bản sao của ảnh. Với ảnh gốc hãy dùng công cụ Che thông tin.', 'info', 2500);
+            }
         }
-    });
-    if (window.editorRegion) window.editorRegion.clear(true);
-    if (addedChanged) buildAddedTexts(layer);
-    if (skippedImg && window.toast) {
-        window.toast('Chỉ xóa được bản sao của ảnh. Với ảnh gốc hãy dùng công cụ Che thông tin.', 'info', 2500);
     }
     if (did) {
         editorSel = null;
@@ -4863,75 +4746,58 @@ function editorCutSelection() {
 }
 
 function editorSelectAllText() {
-    if (!window.editorRegion) return 0;
-    const n = window.editorRegion.selectAll();
+    const layer = document.getElementById('editor-text-layer');
+    if (!layer) return 0;
+    const spans = Array.from(layer.querySelectorAll('span[data-tidx]')).filter(s => (s.textContent || '').trim());
+    spans.forEach(s => s.classList.add('region-selected'));
     editorSel = null;
     applySelHighlight();
-    if (window.toast) window.toast(`Đã chọn ${n} đối tượng trên trang`, 'info', 1500);
-    return n;
+    if (window.toast) window.toast(`Đã chọn ${spans.length} dòng chữ trên trang`, 'info', 1500);
+    return spans.length;
 }
 
-// Nhích đối tượng đang chọn (một hoặc cả nhóm) bằng phím mũi tên
+// Nhích đối tượng đang chọn bằng phím mũi tên (Shift = nhích 10px)
 function editorNudgeSelection(dx, dy) {
     const layer = document.getElementById('editor-text-layer');
     if (!layer || !editorViewport) return false;
-    const els = editorSelectedElements();
-    if (!els.length) return false;
-    let moved = false;
-    const prevRestoring = editorHistRestoring;
-    editorHistRestoring = true;          // chỉ ghi lịch sử một lần cho cả nhóm
-    try {
-        els.forEach(el => {
-            const left = (parseFloat(el.style.left) || 0) + dx;
-            const top = (parseFloat(el.style.top) || 0) + dy;
-            if (el.matches('span[data-tidx]')) {
-                const idx = parseInt(el.getAttribute('data-tidx'), 10);
-                if (isNaN(idx) || !el._item) return;
-                el.style.left = left + 'px'; el.style.top = top + 'px';
-                el.classList.add('modified');
-                maskOriginalPosition(idx, el._item, pdfjsLib.Util.transform(editorViewport.transform, el._item.transform));
-                savePositionAndText(el, el._item, idx);
-                moved = true;
-            } else if (el.matches('span[data-added-id]')) {
-                const a = addedTexts.find(t => String(t.id) === el.getAttribute('data-added-id'));
-                if (!a) return;
-                el.style.left = left + 'px'; el.style.top = top + 'px';
-                a.x += dx / editorScale;
-                a.y -= dy / editorScale;
-                moved = true;
-            } else if (el.matches('.editor-img-box')) {
-                const key = el.getAttribute('data-img-key');
-                const cur = modifiedImages.find(i => i.key === key);
-                if (cur && cur.isCopy) {
-                    el.style.left = left + 'px'; el.style.top = top + 'px';
-                    const p = editorViewport.convertToPdfPoint(left, top + el.offsetHeight);
-                    cur.newX = p[0]; cur.newY = p[1]; cur._seq = ++editorSeq;
-                    moved = true;
-                } else if (typeof el._prepareForGroupMove === 'function' && typeof el._commitGroupMove === 'function') {
-                    el._prepareForGroupMove();
-                    el.style.left = left + 'px'; el.style.top = top + 'px';
-                    el.classList.add('modified');
-                    el._commitGroupMove();
-                    moved = true;
-                }
-            }
-        });
-    } finally {
-        editorHistRestoring = prevRestoring;
+    const group = Array.from(layer.querySelectorAll('span[data-tidx].region-selected'));
+    const moveOriginal = sp => {
+        const idx = parseInt(sp.getAttribute('data-tidx'), 10);
+        if (isNaN(idx) || !sp._item) return false;
+        sp.style.left = (parseFloat(sp.style.left) || 0) + dx + 'px';
+        sp.style.top = (parseFloat(sp.style.top) || 0) + dy + 'px';
+        sp.classList.add('modified');
+        const tx = pdfjsLib.Util.transform(editorViewport.transform, sp._item.transform);
+        maskOriginalPosition(idx, sp._item, tx);
+        savePositionAndText(sp, sp._item, idx);
+        return true;
+    };
+    if (group.length) return group.map(moveOriginal).some(Boolean);
+    if (!editorSel || editorSel.page !== editorPage) return false;
+    if (editorSel.type === 'tidx') {
+        const sp = layer.querySelector(`span[data-tidx="${editorSel.index}"]`);
+        return sp ? moveOriginal(sp) : false;
     }
-    if (moved) { recordHistory(); applySelHighlight(); }
-    return moved;
+    if (editorSel.type === 'added') {
+        const a = addedTexts.find(t => t.id === editorSel.id);
+        if (!a) return false;
+        a.x += dx / editorScale;
+        a.y -= dy / editorScale;
+        buildAddedTexts(layer);
+        applySelHighlight();
+        recordHistory();
+        return true;
+    }
+    return false;
 }
 
 (function bindEditorQuickActions() {
     const $ = id => document.getElementById(id);
     const editorOpen = () => !!$('tab-editor')?.classList.contains('active');
     const typing = t => !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
-    const hasSelection = () => editorSelectedElements().length > 0;
-    const isGroup = () => editorRegionNodes().length > 0;
-    const hasSingle = () => !!(editorSel && editorSel.page === editorPage) && !isGroup();
+    const hasSelection = () => !!(document.querySelector('#editor-text-layer span[data-tidx].region-selected') ||
+                                  (editorSel && editorSel.page === editorPage));
     const press = id => $(id)?.click();
-    const say = msg => { if (window.toast) window.toast(msg, 'info', 2200); };
 
     // ---------- Phím tắt bổ sung ----------
     document.addEventListener('keydown', function (e) {
@@ -4943,8 +4809,7 @@ function editorNudgeSelection(dx, dy) {
             if (!mod && (k === 'Delete' || k === 'Backspace')) {
                 if (editorCurrentTool === 'text' && editorDeleteSelection()) e.preventDefault();
             } else if (mod && !e.shiftKey && k.toLowerCase() === 'x') {
-                if (isGroup()) { e.preventDefault(); say('Cắt/sao chép chỉ áp dụng cho một đối tượng. Dùng Delete để xóa cả nhóm.'); }
-                else if (editorCutSelection()) e.preventDefault();
+                if (editorCutSelection()) e.preventDefault();
             } else if (mod && !e.shiftKey && k.toLowerCase() === 'a') {
                 e.preventDefault();
                 editorSelectAllText();
@@ -4999,20 +4864,19 @@ function editorNudgeSelection(dx, dy) {
     function openMenu(x, y) {
         closeMenu();
         ensureStyle();
-        const any = hasSelection(), single = hasSingle();
+        const sel = hasSelection();
         const items = [
-            ['Cắt', 'Ctrl+X', () => editorCutSelection(), !single],
-            ['Sao chép', 'Ctrl+C', () => editorCopySelection(), !single],
+            ['Cắt', 'Ctrl+X', () => editorCutSelection(), !sel],
+            ['Sao chép', 'Ctrl+C', () => editorCopySelection(), !sel],
             ['Dán', 'Ctrl+V', () => editorPasteClip(), !editorClip],
             '-',
-            ['Đậm', 'Ctrl+B', () => editorToggleBold(), !any],
-            ['Nghiêng', 'Ctrl+I', () => editorToggleItalic(), !any],
-            ['Tăng cỡ chữ', 'Ctrl+>', () => press('rb-font-inc'), !any],
-            ['Giảm cỡ chữ', 'Ctrl+<', () => press('rb-font-dec'), !any],
+            ['Đậm', 'Ctrl+B', () => editorToggleBold(), !sel],
+            ['Nghiêng', 'Ctrl+I', () => editorToggleItalic(), !sel],
+            ['Tăng cỡ chữ', 'Ctrl+>', () => press('rb-font-inc'), !sel],
+            ['Giảm cỡ chữ', 'Ctrl+<', () => press('rb-font-dec'), !sel],
             '-',
-            ['Xóa', 'Delete', () => editorDeleteSelection(), !any],
-            ['Chọn tất cả trên trang', 'Ctrl+A', () => editorSelectAllText(), false],
-            ['Bỏ chọn', 'Esc', () => { window.editorRegion?.clear(true); editorSel = null; applySelHighlight(); }, !any],
+            ['Xóa', 'Delete', () => editorDeleteSelection(), !sel],
+            ['Chọn tất cả chữ trên trang', 'Ctrl+A', () => editorSelectAllText(), false],
             ['Tìm kiếm…', 'Ctrl+F', () => press('rb-find-btn'), false],
             '-',
             ['Hoàn tác', 'Ctrl+Z', () => editorUndo(), false],
@@ -5053,13 +4917,13 @@ function editorNudgeSelection(dx, dy) {
         // Chọn đối tượng dưới con trỏ (trừ khi nó đã nằm trong nhóm đang chọn)
         const sp = e.target.closest('span');
         const box = e.target.closest('.editor-img-box');
-        const obj = (sp && (sp.hasAttribute('data-tidx') || sp.hasAttribute('data-added-id'))) ? sp : box;
-        const inGroup = obj && obj.classList.contains('region-selected');
+        const inGroup = sp && sp.classList.contains('region-selected');
         if (!inGroup) {
-            if (window.editorRegion) window.editorRegion.clear(true);
-            if (obj && obj.hasAttribute('data-added-id')) editorSel = { type: 'added', page: editorPage, id: obj.getAttribute('data-added-id') };
-            else if (obj && obj.hasAttribute('data-tidx')) editorSel = { type: 'tidx', page: editorPage, index: parseInt(obj.getAttribute('data-tidx'), 10) };
-            else if (obj && obj.hasAttribute('data-img-key')) editorSel = { type: 'img', page: editorPage, key: obj.getAttribute('data-img-key') };
+            document.querySelectorAll('#editor-text-layer span[data-tidx].region-selected')
+                .forEach(s => s.classList.remove('region-selected'));
+            if (sp && sp.hasAttribute('data-added-id')) editorSel = { type: 'added', page: editorPage, id: sp.getAttribute('data-added-id') };
+            else if (sp && sp.hasAttribute('data-tidx')) editorSel = { type: 'tidx', page: editorPage, index: parseInt(sp.getAttribute('data-tidx'), 10) };
+            else if (box && box.hasAttribute('data-img-key')) editorSel = { type: 'img', page: editorPage, key: box.getAttribute('data-img-key') };
             else editorSel = null;
             applySelHighlight();
         }

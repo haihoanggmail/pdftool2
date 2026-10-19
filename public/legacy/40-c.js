@@ -394,6 +394,7 @@ self.onmessage = async (ev) => {
         loadedBase = base;
         const url = URL.createObjectURL(new Blob([WORKER_SRC], { type: 'application/javascript' }));
         worker = new Worker(url);
+        setTimeout(() => URL.revokeObjectURL(url), 10000);      // đã nạp xong mã worker, trả URL lại cho trình duyệt
         worker.onmessage = ev => listeners.forEach(fn => fn(ev.data));
         loadPromise = new Promise((resolve, reject) => {
             const fn = m => {
