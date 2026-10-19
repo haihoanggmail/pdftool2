@@ -16,7 +16,7 @@ const CORE = [
   './', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png', './icon-maskable-512.png', './logo.png',
   './legacy/00-fonts-meta.js', './legacy/04-lazy-libs.js', './legacy/05-core-utils.js', './legacy/06-pdf-ops.js',
   './legacy/10-core.js', './legacy/20-a.js', './legacy/30-b.js', './legacy/40-c.js', './legacy/50-d.js', './legacy/60-e.js',
-  './legacy/70-f.js', './legacy/80-g.js', './legacy/95-multipage.js', './legacy/96-editor-sig.js', './legacy/97-viewer.js', './legacy/08-a11y.js',
+  './legacy/80-g.js', './legacy/95-multipage.js', './legacy/96-editor-sig.js', './legacy/97-viewer.js', './legacy/08-a11y.js',
   './legacy/pdf-ops.worker.js',
   './legacy/90-i18n-a.js', './legacy/91-i18n-b.js', './legacy/92-i18n-ribbon.js', './legacy/93-i18n-ui.js', './legacy/94-i18n-v2.js'
 ];
