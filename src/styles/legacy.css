@@ -460,7 +460,3 @@
 .preview-header { flex-wrap: wrap; gap: 8px; }
 html[data-theme="dark"] .hv-area { background: #1d2024; }
 html[data-theme="dark"] .hv-page:not(.hv-ready)::after { background: #2a2f36; animation: none; }
-
-/* C: hướng dẫn chọn vùng và trạng thái chọn rõ ràng trong tab Chỉnh sửa PDF */
-.editor-region-status{font-size:11px;color:#475569;line-height:1.35;max-width:330px;margin-left:4px}.editor-img-box.region-selected{outline:2px solid #2563eb!important;outline-offset:2px;background-color:rgba(37,99,235,.10)}#editor-clear-region-btn:disabled{opacity:.45;cursor:not-allowed}.editor-region-select{pointer-events:none}
-@media(max-width:900px){.editor-region-status{display:none}}
