@@ -9,21 +9,21 @@
 // __BUILD__ được thay bằng mã bản dựng mỗi lần `npm run build` (xem vite.config.js) -> mỗi bản mới là một phiên bản bộ nhớ mới.
 const BUILD = '__BUILD__';
 const APP_CACHE = 'pdftool-app-' + BUILD;
-const VENDOR_CACHE = 'pdftool-vendor-v1';      // tăng số này khi đổi nội dung file trong /vendor
+const VENDOR_CACHE = 'pdftool-vendor-v1';      // tăng số này khi đổi nội dung file trong /vendor hoặc /lib
 
 // Luôn tải sẵn (nhỏ, cần để mở được app khi offline)
 const CORE = [
   './', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png', './icon-maskable-512.png', './logo.png',
   './legacy/00-fonts-meta.js', './legacy/04-lazy-libs.js', './legacy/05-core-utils.js', './legacy/06-pdf-ops.js',
   './legacy/10-core.js', './legacy/20-a.js', './legacy/30-b.js', './legacy/40-c.js', './legacy/50-d.js', './legacy/60-e.js',
-  './legacy/80-g.js', './legacy/95-multipage.js', './legacy/96-editor-sig.js', './legacy/97-viewer.js', './legacy/08-a11y.js',
+  './legacy/70-f.js', './legacy/80-g.js', './legacy/95-multipage.js', './legacy/96-editor-sig.js', './legacy/97-viewer.js', './legacy/08-a11y.js',
   './legacy/pdf-ops.worker.js',
   './legacy/90-i18n-a.js', './legacy/91-i18n-b.js', './legacy/92-i18n-ribbon.js', './legacy/93-i18n-ui.js', './legacy/94-i18n-v2.js'
 ];
 // Tải sẵn vào bộ nhớ riêng (không đổi theo bản dựng)
 const VENDOR_CORE = ['./vendor/pdf-lib.min.js', './vendor/pdf.min.js', './vendor/pdf.worker.min.js'];
 
-const isVendorLike = (p) => /\/(vendor|assets|fonts)\//.test(p);
+const isVendorLike = (p) => /\/(vendor|lib|assets|fonts)\//.test(p);   // lib = fflate / mozjpeg (bộ nén PDF), không đổi theo bản dựng
 
 async function addAll(cacheName, urls) {
   const c = await caches.open(cacheName);
@@ -125,7 +125,7 @@ self.addEventListener('fetch', (event) => {
   }
   if (isVendorLike(url.pathname)) {
     // file có hash / thư viện cố định: bộ nhớ vendor cho /vendor, bộ nhớ ứng dụng cho /assets
-    event.respondWith(cacheFirst(req, /\/vendor\//.test(url.pathname) ? VENDOR_CACHE : APP_CACHE));
+    event.respondWith(cacheFirst(req, /\/(vendor|lib)\//.test(url.pathname) ? VENDOR_CACHE : APP_CACHE));
     return;
   }
   event.respondWith(networkFirst(req, APP_CACHE, 6000));     // legacy/*.js, css, manifest...
