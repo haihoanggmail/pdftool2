@@ -316,7 +316,7 @@
         <!-- Hidden input and status elements for file loading and legacy script compatibility -->
         <input type="file" id="editor-file-input" accept="application/pdf" style="display:none" onchange="editorLoadFile(this)">
         <div id="editor-file-status" style="display:none">Chưa chọn file.</div>
-        <div id="region-status" style="display:none">Chưa chọn đối tượng</div>
+
         <div id="editor-img-status" style="display:none"></div>
 
         <div class="editor-layout">
@@ -332,6 +332,8 @@
                     <button class="btn btn-small btn-tool" onclick="editorZoomFit()" title="Vừa chiều rộng khung">↔ Vừa chiều rộng</button>
                     <button class="btn btn-small btn-tool" onclick="editorZoomPage()" title="Cả trang nằm gọn trong khung">⛶ Vừa trang</button>
                     <button class="btn btn-small btn-tool" onclick="editorZoom100()" title="Kích thước thật (100%)">100%</button>
+                    <span id="editor-region-status" class="editor-region-status">Kéo chuột trên vùng trống để chọn · Chỉ chọn chữ/hình nằm trọn trong khung</span>
+                    <button id="editor-clear-region-btn" class="btn btn-small" type="button" onclick="window.clearEditorRegionSelection && window.clearEditorRegionSelection()" disabled title="Bỏ chọn vùng">Bỏ chọn</button>
                 </div>
 				
                 <div class="editor-stage-scroll">
@@ -1057,7 +1059,10 @@
 
             <p style="font-size:13px;">
                 🔐 File PDF được xử lý ngay trên máy bạn, không tải lên máy chủ.
-
+                Ứng dụng ghi thống kê sử dụng: thao tác, tab đã mở, tên file, IP/khu vực gần đúng, trình duyệt (không có nội dung file).
+                <label style="display:inline-flex; align-items:center; gap:6px; margin-left:6px; cursor:pointer;">
+                    <input type="checkbox" id="no-log-chk"> Không gửi thống kê
+                </label>
             </p>
 
             <hr style="border:0;
@@ -1188,7 +1193,6 @@
 <script src="legacy/40-c.js"></script>
 <script src="legacy/50-d.js"></script>
 <script src="legacy/60-e.js"></script>
-<script src="legacy/70-f.js"></script>
 <script src="legacy/80-g.js"></script>
 <script src="legacy/95-multipage.js"></script>
 <script src="legacy/96-editor-sig.js"></script>

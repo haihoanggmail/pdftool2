@@ -1,4 +1,4 @@
-# Bản hợp nhất v7 (A + B + v6)
+# Bản hợp nhất v8 (v7 + chọn vùng mới)
 
 Gốc chung của A và B là v6. Hợp nhất 3 chiều bằng `git merge-file`; chỉ 6 file có xung đột thật.
 
@@ -26,3 +26,10 @@ Gốc chung của A và B là v6. Hợp nhất 3 chiều bằng `git merge-file`
 ## Giữ từ v6 (bộ nén / Excel / xem trước)
 - Bộ nén Tự động / Siêu nén (mozjpeg + fflate trong `public/lib/`), Che thông tin trong tab Chỉnh sửa, xem trước nhiều trang, PDF → Excel giữ ảnh
 - Bổ sung: giải phóng tài liệu pdf.js cũ và object URL ở sign / form / redact / ribbon / worker Word-Excel
+
+## Thay đổi so với v7 (v8)
+- **Chọn vùng nhiều đối tượng** (10-core.js): dùng Pointer Events thay mousedown; chỉ chọn đối tượng nằm TRỌN trong khung; hỗ trợ chữ gốc, chữ thêm, ảnh; kéo một đối tượng đã chọn để di chuyển cả nhóm và lưu tọa độ; Esc / nút "Bỏ chọn". Lý do đổi: handler pointerdown cũ gọi preventDefault nên trình duyệt không bắn mousedown, khung chọn trên vùng trống có thể không chạy.
+- **Bỏ** `public/legacy/70-f.js` (cơ chế "Chọn Vùng" cũ, nút `#region-mode-btn` không còn trong HTML) và hàm `initEditorRegionSelection` cũ (giữ hàm rỗng cho nơi gọi cũ).
+- Phím tắt / menu chuột phải dùng chung vùng chọn (`window.editorRegion`): Delete, Ctrl+A, mũi tên nhích cả nhóm (chỉ ghi lịch sử một lần).
+- Test mới: `tests/region-selection.test.cjs`, `tests/region-behavior.test.cjs` (jsdom, thêm vào devDependencies).
+- Giữ nguyên từ v7: giải phóng pdf.js doc / object URL (sign, form, redact, ribbon, worker Word-Excel), cache `public/lib` trong service worker, gỡ các bản trùng trong `public/vendor`.

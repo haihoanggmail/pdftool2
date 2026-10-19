@@ -46,6 +46,7 @@ Sau khi thêm/sửa biến phải **Redeploy** thì mới có hiệu lực. Chư
 Chuyển dần `public/legacy/*` sang module trong `src/` (từng tab một), thêm tính năng mới: ký tên, điền form, che thông tin, so sánh nâng cao.
 
 ## Lịch sử thay đổi
+- **v8:** bản v7 + chọn vùng nhiều đối tượng viết lại (Pointer Events, chọn trọn khung, chữ gốc/chữ thêm/ảnh, kéo và nhích cả nhóm, Delete/Esc/Ctrl+A/menu chuột phải dùng chung vùng chọn), bỏ `70-f.js` và cơ chế chọn vùng cũ, thêm test hành vi bằng jsdom.
 - **v7:** hợp nhất hai nhánh A (tải trễ, Web Worker, a11y, SEO, service worker mới) và B (phân tích trang scan, bỏ chọn công cụ bằng Esc) với v6. Chi tiết xem `MERGE_NOTES.md`.
 
 ### v6 = gộp v4 + v5
