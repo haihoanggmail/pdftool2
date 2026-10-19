@@ -2003,6 +2003,7 @@ export async function applyRemoveBlankPagesToEditor() {
       cv.width = 0;
       cv.height = 0;
     }
+    try { pdfJs.destroy(); } catch (e) {}
 
     if (!blankIndices.length) {
       if (window.toast) window.toast(`ℹ️ Không tìm thấy trang trắng nào (đã kiểm tra ${total} trang).`, 'info');
@@ -2287,6 +2288,7 @@ export async function applyPipelineToEditor() {
         if (dark / (cv.width * cv.height) <= 0.0001) blankIndices.push(i - 1);
         cv.width = 0; cv.height = 0;
       }
+      try { pdfJs.destroy(); } catch (e) {}
 
       if (blankIndices.length > 0 && blankIndices.length < total) {
         for (let k = blankIndices.length - 1; k >= 0; k--) pdfDoc.removePage(blankIndices[k]);

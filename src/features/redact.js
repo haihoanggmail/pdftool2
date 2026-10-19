@@ -54,6 +54,7 @@ async function openBytes(bytes, displayName, fromEditor) {
   try {
     window.Progress?.show('Đang mở PDF...');
     st.bytes = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+    if (st.pdf) { try { st.pdf.destroy(); } catch (e) {} }
     st.pdf = await window.pdfjsLib.getDocument({ data: st.bytes.slice(0), isEvalSupported: false }).promise;
     st.name = displayName.replace(/\.pdf$/i, ''); st.pages = st.pdf.numPages; st.cur = 1; st.rects = []; st.sel = null; st.mode = 'width';
     st.fromEditor = !!fromEditor;

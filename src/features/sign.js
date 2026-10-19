@@ -126,7 +126,8 @@ function setupSigMaker() {
   $('#sg-pickimg').onclick = () => $('#sg-imgfile').click();
   $('#sg-imgfile').onchange = (e) => {
     const f = e.target.files[0]; if (!f) return; const img = new Image();
-    img.onload = () => { st.imgData = img; refreshImgPreview(); }; img.src = URL.createObjectURL(f);
+    const u = URL.createObjectURL(f);
+    img.onload = () => { st.imgData = img; refreshImgPreview(); URL.revokeObjectURL(u); }; img.onerror = () => URL.revokeObjectURL(u); img.src = u;
   };
   $('#sg-rmbg').onchange = $('#sg-thr').oninput = refreshImgPreview;
   $('#sg-save').onclick = () => {
@@ -154,6 +155,7 @@ async function openPdf(file) {
   try {
     window.Progress?.show('Đang mở PDF...');
     const bytes = new Uint8Array(await file.arrayBuffer());
+    if (st.pdf) { try { st.pdf.destroy(); } catch (e) {} }
     st.pdf = await window.pdfjsLib.getDocument({ data: bytes.slice(0), isEvalSupported: false }).promise;
     st.bytes = bytes; st.name = file.name.replace(/\.pdf$/i, ''); st.pages = st.pdf.numPages; st.cur = 1; st.mode = 'width'; st.ph = []; st.sel = null;
     $('#sg-fileinfo').textContent = `${file.name} · ${st.pages} trang`;

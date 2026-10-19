@@ -51,6 +51,7 @@ async function openPdf(file) {
       else { info.options = f.getOptions(); info.multiSel = true; st.values[info.name] = f.getSelected(); }
       st.fields.push(info);
     }
+    if (st.pdf) { try { st.pdf.destroy(); } catch (e) {} }
     st.pdf = await window.pdfjsLib.getDocument({ data: st.bytes.slice(0), isEvalSupported: false }).promise;
     $('#fm-info').textContent = `${file.name} · ${st.pages} trang · ${st.fields.length} trường`;
     renderFields();
@@ -110,7 +111,7 @@ async function refresh() {
 }
 async function renderPage(bytes) {
   const tk = ++st.token;
-  if (bytes) { st.pdf = await window.pdfjsLib.getDocument({ data: new Uint8Array(bytes).slice(0), isEvalSupported: false }).promise; }
+  if (bytes) { if (st.pdf) { try { st.pdf.destroy(); } catch (e) {} } st.pdf = await window.pdfjsLib.getDocument({ data: new Uint8Array(bytes).slice(0), isEvalSupported: false }).promise; }
   if (!st.pdf) return;
   const page = await st.pdf.getPage(st.cur), stage = $('#fm-stage');
   const base = page.getViewport({ scale: 1 }), scale = Math.min(1.6, Math.max(0.4, (stage.clientWidth - 32) / base.width)), vp = page.getViewport({ scale });
