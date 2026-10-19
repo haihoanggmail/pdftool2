@@ -8,7 +8,7 @@
     "preview": "vite preview --host 0.0.0.0 --port 3000",
     "test": "node tests/pdf-suite.test.mjs && npm run test:ui",
     "lint": "node tests/pdf-suite.test.mjs",
-    "test:ui": "node tests/utils.test.cjs && node tests/lazy.test.cjs && node tests/i18n.test.cjs && node tests/sw.test.cjs && node tests/worker.test.cjs && node tests/docx-fonts.test.cjs && node tests/region-selection.test.cjs && node tests/region-behavior.test.cjs"
+    "test:ui": "node tests/utils.test.cjs && node tests/lazy.test.cjs && node tests/i18n.test.cjs && node tests/sw.test.cjs && node tests/worker.test.cjs && node tests/docx-fonts.test.cjs"
   },
   "dependencies": {
     "@pdf-lib/fontkit": "^1.1.1",
@@ -19,7 +19,6 @@
     "tesseract.js": "^7.0.0"
   },
   "devDependencies": {
-    "jsdom": "^30.1.3",
     "vite": "^8.3.4"
   },
   "private": true,

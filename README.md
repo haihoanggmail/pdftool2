@@ -45,7 +45,10 @@ Sau khi thêm/sửa biến phải **Redeploy** thì mới có hiệu lực. Chư
 ## Việc tiếp theo
 Chuyển dần `public/legacy/*` sang module trong `src/` (từng tab một), thêm tính năng mới: ký tên, điền form, che thông tin, so sánh nâng cao.
 
-## Lịch sử thay đổi (bản v6 = gộp v4 + v5, đầy đủ nhất)
+## Lịch sử thay đổi
+- **v7:** hợp nhất hai nhánh A (tải trễ, Web Worker, a11y, SEO, service worker mới) và B (phân tích trang scan, bỏ chọn công cụ bằng Esc) với v6. Chi tiết xem `MERGE_NOTES.md`.
+
+### v6 = gộp v4 + v5
 - **Nén PDF:** chế độ 🧠 Tự động, 🚀 Siêu nén (giữ lớp chữ tìm kiếm), Cực mạnh; giảm dpi theo kích thước ảnh thật trên trang; mozjpeg + tự nhận ảnh xám; thu nhỏ mặt nạ trong suốt; gộp đối tượng trùng; zlib mức 9; báo cáo "dung lượng còn nằm ở đâu".
 - **Tab Chỉnh sửa:** nhóm "Công cụ nhanh" (Trang chủ), Che thông tin nhạy cảm (tự động / thủ công), bước Che và bước Nén trong Chuỗi liên hoàn, nút Nén PDF dùng chung bộ nén mới.
 - **Xem trước:** bộ xem trước nhiều trang dùng chung (Ctrl + cuộn, vừa ngang, nhiều trang vừa khung) cho Gộp, PDF Tools, Word, Excel; Ctrl + cuộn cho Đối chiếu và Che thông tin.
