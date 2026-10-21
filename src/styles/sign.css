@@ -29,3 +29,13 @@
 @media(max-width:900px){.sg-wrap{flex-direction:column}.sg-left{width:100%}.sg-right{width:100%}}
 
 .sg-btn.sg-on{background:var(--primary,#0078d4);border-color:var(--primary,#0078d4);color:#fff}
+
+/* ---- THANH TRƯỢT KHUNG TRÁI (màn hình rộng) ----
+   Trước đây cột trái cao hơn màn hình nhưng .tab-content có overflow:hidden nên phần dưới bị cắt mất, không có thanh trượt.
+   Nay khung bao (Ký tên PDF) được giới hạn đúng chiều cao vùng làm việc và cột trái tự hiện thanh trượt khi nội dung dài.
+   Màn hình hẹp (<= 900px) không áp dụng: ở đó cả trang cuộn dọc (xem mobile.css). */
+@media (min-width: 901px) {
+  .sg-wrap { flex: 1 1 auto; min-width: 0; min-height: 0; box-sizing: border-box; align-items: stretch; }
+  .sg-left { min-height: 0; overflow-y: auto; overflow-x: hidden; padding-right: 8px; box-sizing: border-box; scrollbar-gutter: stable; }
+  .sg-right { min-height: 0; }
+}

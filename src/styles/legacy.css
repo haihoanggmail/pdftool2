@@ -101,8 +101,8 @@
         .file-item { cursor: pointer; }
         .file-item:hover { border-color: var(--primary-hover); }
         .file-item.selected { border-color: var(--primary); box-shadow: 0 0 0 2px rgba(0,90,158,0.25); background: #eef5fc; }
-        #tab-merge .left-panel { width: 400px; overflow: hidden; padding-right: 0; }
-        .merge-list-card { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+        #tab-merge .left-panel { width: 400px; overflow-x: hidden; overflow-y: auto; padding-right: 5px; scrollbar-gutter: stable; }
+        .merge-list-card { flex: 1; min-height: 180px; display: flex; flex-direction: column; }   /* tối thiểu 180px: màn hình thấp thì khung trái cuộn, không ép danh sách file về 0 */
         .merge-list-card .file-list { min-height: 0; padding: 10px; }
         .merge-list-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
         .merge-list-head .card-title { margin: 0; }

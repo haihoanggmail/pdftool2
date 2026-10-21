@@ -26,3 +26,13 @@
 @keyframes rdflash{0%,40%{outline:4px solid #f59e0b;box-shadow:0 0 0 8px rgba(245,158,11,.5)}100%{outline:1px solid #f59e0b;box-shadow:none}}
 
 .rd-btn.rd-on{background:var(--primary,#0078d4);border-color:var(--primary,#0078d4);color:#fff}
+
+/* ---- THANH TRƯỢT KHUNG TRÁI (màn hình rộng) ----
+   Trước đây cột trái cao hơn màn hình nhưng .tab-content có overflow:hidden nên phần dưới bị cắt mất, không có thanh trượt.
+   Nay khung bao (Che thông tin nhạy cảm) được giới hạn đúng chiều cao vùng làm việc và cột trái tự hiện thanh trượt khi nội dung dài.
+   Màn hình hẹp (<= 900px) không áp dụng: ở đó cả trang cuộn dọc (xem mobile.css). */
+@media (min-width: 901px) {
+  .rd-wrap { flex: 1 1 auto; min-width: 0; min-height: 0; box-sizing: border-box; align-items: stretch; }
+  .rd-left { min-height: 0; overflow-y: auto; overflow-x: hidden; padding-right: 8px; box-sizing: border-box; scrollbar-gutter: stable; }
+  .rd-right { min-height: 0; }
+}

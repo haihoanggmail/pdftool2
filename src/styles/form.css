@@ -12,3 +12,13 @@
 .fm-stage{overflow:auto;max-height:calc(100vh - 190px);background:rgba(128,128,128,.15);border-radius:8px;padding:16px;text-align:center}
 .fm-page{box-shadow:0 2px 12px rgba(0,0,0,.3);background:#fff}.fm-empty{padding:80px 0;opacity:.6}
 @media(max-width:900px){.fm-wrap{flex-direction:column}.fm-left,.fm-right{width:100%}}
+
+/* ---- THANH TRƯỢT KHUNG TRÁI (màn hình rộng) ----
+   Trước đây cột trái cao hơn màn hình nhưng .tab-content có overflow:hidden nên phần dưới bị cắt mất, không có thanh trượt.
+   Nay khung bao (Điền form PDF) được giới hạn đúng chiều cao vùng làm việc và cột trái tự hiện thanh trượt khi nội dung dài.
+   Màn hình hẹp (<= 900px) không áp dụng: ở đó cả trang cuộn dọc (xem mobile.css). */
+@media (min-width: 901px) {
+  .fm-wrap { flex: 1 1 auto; min-width: 0; min-height: 0; box-sizing: border-box; align-items: stretch; }
+  .fm-left { min-height: 0; overflow-y: auto; overflow-x: hidden; padding-right: 8px; box-sizing: border-box; scrollbar-gutter: stable; }
+  .fm-right { min-height: 0; }
+}
