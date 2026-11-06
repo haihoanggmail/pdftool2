@@ -95,6 +95,7 @@ async function loadLocalFontList() {
 function applyFontToEl(el, key) {
     el.style.fontFamily = fontCss(key);
     el.style.fontSynthesis = fontInfo(key).styles.length < 4 ? 'none' : '';
+    if (el.tagName === 'SPAN' && typeof fixSpanBaseline === 'function') fixSpanBaseline(el);   // giữ chữ ngang hàng dòng cũ khi đổi font
 }
 function fontBytes(key, style) {
     if (key === 'roboto' || !window.EMBEDDED_FONTS || !window.EMBEDDED_FONTS[key]) return getEmbeddedFont(style);

@@ -2181,6 +2181,7 @@ async function editorLoadFile(input) {
 async function _editorRenderPageImpl() {
     if (!editorPdfJsDoc) return;
     const page = await editorPdfJsDoc.getPage(editorPage);
+    window._editorPageObj = page;      // dùng để đọc tên font thật của chữ gốc (realFontName)
     editorViewport = page.getViewport({
         scale: editorScale
     });
@@ -2204,8 +2205,9 @@ async function _editorRenderPageImpl() {
     textContent.items.forEach((item, index) => {
         const span = document.createElement('span');
         const tx = pdfjsLib.Util.transform(editorViewport.transform, item.transform);
-        const isBold = /bold|black|heavy/i.test(item.fontName || "");
-        const isItalic = /italic|oblique/i.test(item.fontName || "");
+        const _fn = (item.fontName || '') + ' ' + realFontName(item);
+        const isBold = /bold|black|heavy/i.test(_fn);
+        const isItalic = /italic|oblique/i.test(_fn);
         span.textContent = item.str;
         span.setAttribute('data-tidx', index);
         span._item = item;
@@ -2241,6 +2243,7 @@ async function _editorRenderPageImpl() {
             if (!savedChange.preserveOriginalFormatting && savedChange.isItalic) span.classList.add('is-italic');
             if (!savedChange.preserveOriginalFormatting) applyFontToEl(span, fontKeyOf(savedChange));
             maskOriginalPosition(index, item, tx);
+            fixSpanBaseline(span);
         }
         enableDragAndEdit(span, item, index, tx);
         textLayerDiv.appendChild(span);
@@ -2844,7 +2847,7 @@ function updateModifiedItemFormatting(index, span, changes) {
     const [pdfX, pdfY] = editorViewport.convertToPdfPoint(htmlLeft, baselineVp);
 
     const curColor = changes.color !== undefined ? changes.color : ((prev && prev.color) || span.style.getPropertyValue('--txt-color') || sampled.color || '#000000');
-    const curFont = changes.fontFamily !== undefined ? changes.fontFamily : ((prev && prev.fontFamily) || fontKeyOf({ fontFamily: span.style.fontFamily || (originalItem && originalItem.fontName) }));
+    const curFont = changes.fontFamily !== undefined ? changes.fontFamily : ((prev && prev.fontFamily) || defaultFontKeyFor(span));
     const curBold = changes.isBold !== undefined ? changes.isBold : span.classList.contains('is-bold');
     const curItalic = changes.isItalic !== undefined ? changes.isItalic : span.classList.contains('is-italic');
 
@@ -2852,7 +2855,7 @@ function updateModifiedItemFormatting(index, span, changes) {
         key: key, _seq: ++editorSeq,
         page: editorPage,
         color: curColor,
-        bgColor: (prev && prev.bgColor) || sampled.bg || '#ffffff',
+        bgColor: changes.bgColor || (prev && prev.bgColor) || sampled.bg || '#ffffff',
         index: index,
         text: (prev && prev.text) || span.textContent,
         origX: originalItem ? originalItem.transform[4] : (prev ? prev.origX : 0),
@@ -2905,7 +2908,7 @@ function editorGetSelectedFormatting() {
                 const isItalic = sp.classList.contains('is-italic');
                 const color = (m && m.color) || sp.style.getPropertyValue('--txt-color') || (sp._item && sampleTextColors(sp._item).color) || '#000000';
                 const fontSize = (m && m.fontSize) || sp._ptSize || (sp._item && sp._item.height) || 12;
-                const fontKey = (m && m.fontFamily) || (sp._item && fontKeyOf({ fontFamily: sp.style.fontFamily || sp._item.fontName })) || 'roboto';
+                const fontKey = (m && m.fontFamily) || defaultFontKeyFor(sp);
                 return { isEditing: false, hasSelection: true, isBold, isItalic, color, fontSize, fontKey };
             }
         }
@@ -2917,7 +2920,7 @@ function editorGetSelectedFormatting() {
         const isItalic = sp.classList.contains('is-italic');
         const color = sp.style.getPropertyValue('--txt-color') || (sp._item && sampleTextColors(sp._item).color) || '#000000';
         const fontSize = sp._ptSize || (sp._item && sp._item.height) || 12;
-        const fontKey = (sp._item && fontKeyOf({ fontFamily: sp.style.fontFamily || sp._item.fontName })) || 'roboto';
+        const fontKey = defaultFontKeyFor(sp);
         return { isEditing: false, hasSelection: true, isBold, isItalic, color, fontSize, fontKey };
     }
     return { hasSelection: false, isEditing: false };
@@ -3728,6 +3731,98 @@ function editorChangePage(dir) {
     }
 }
 
+// Tên font thật trong PDF (vd "DejaVuSans", "TimesNewRomanPS-BoldMT"); item.fontName của pdf.js chỉ là mã nội bộ g_d0_f1
+function realFontName(item) {
+    try {
+        const pg = window._editorPageObj;
+        if (pg && item && item.fontName && pg.commonObjs.has(item.fontName)) {
+            const f = pg.commonObjs.get(item.fontName);
+            if (f && f.name) return String(f.name).replace(/^[A-Z]{6}\+/, '');
+        }
+    } catch (e) {}
+    return '';
+}
+
+// Chọn font gần giống chữ gốc nhất: font cùng tên trong máy (nếu đã nạp) > Tinos (serif) > Cousine (mono) > Roboto
+function guessFontKey(item) {
+    const name = realFontName(item);
+    if (!name) return 'roboto';
+    const norm = s => String(s).toLowerCase().replace(/[\s_-]+/g, '');
+    const low = norm(name);
+    try {
+        const fams = Object.keys(window.LOCAL_FONTS || {});
+        const hit = fams.find(f => { const l = norm(f); return l.length > 2 && low.indexOf(l) !== -1; });
+        if (hit && window.LOCAL_FONTS[hit].regular) return 'local:' + hit;
+    } catch (e) {}
+    if (/courier|mono|consolas|cousine|lucidaconsole/.test(low)) return 'cousine';
+    if (/times|tinos|georgia|cambria|garamond|palatino|minion|bookantiqua|roman/.test(low) || (/serif/.test(low) && !/sans/.test(low))) return 'tinos';
+    return 'roboto';
+}
+
+function defaultFontKeyFor(span) {
+    if (span && span._item) return guessFontKey(span._item);
+    return fontKeyOf({ fontFamily: span && span.style && span.style.fontFamily });
+}
+
+const _fontHintShown = new Set();
+function hintOriginalFont(item, usedKey) {
+    try {
+        const name = realFontName(item);
+        if (!name || _fontHintShown.has(name) || String(usedKey).indexOf('local:') === 0 || !window.toast) return;
+        _fontHintShown.add(name);
+        window.toast('Font gốc của chữ này là "' + name + '". Chữ mới dùng "' + fontInfo(usedKey).label + '" nên có thể khác nhẹ. Muốn giống 100%: bấm "Nạp font có sẵn trong máy" rồi chọn đúng font này.', 'info', 7000);
+    } catch (e) {}
+}
+
+// Chữ đã sửa hiển thị với line-height mặc định nên đường cơ sở lệch theo từng font (mỗi font một tỉ lệ ascent/descent),
+// làm chữ mới không ngang hàng dòng cũ. Đặt line-height để đường cơ sở nằm đúng tại top + 1em (khớp cách tính toạ độ khi lưu/xuất).
+const _baselineLhCache = new Map();
+function fixSpanBaseline(span) {
+    try {
+        if (!span || !span.hasAttribute('data-tidx')) return;
+        // Đọc từ style/class của chính span (không dùng getComputedStyle vì span có thể chưa gắn vào trang)
+        const fam = span.style.fontFamily || 'Roboto, Arial, sans-serif';
+        const weight = span.classList.contains('is-bold') ? '700' : '400';
+        const style = span.classList.contains('is-italic') ? 'italic' : 'normal';
+        const font = `${style} ${weight} 100px ${fam}`;
+        let lh = _baselineLhCache.get(font);
+        if (lh === undefined) {
+            const ctx = _measureCtx;
+            ctx.font = font;
+            const m = ctx.measureText('Hxgy');
+            if (m && m.fontBoundingBoxAscent > 0) {
+                const a = m.fontBoundingBoxAscent / 100, d = m.fontBoundingBoxDescent / 100;
+                lh = +(2 - a + d).toFixed(4);
+            } else lh = null;
+            // Chỉ nhớ kết quả khi font đã nạp xong (tránh lưu số đo của font dự phòng)
+            if (!document.fonts || !document.fonts.check || document.fonts.check(font)) _baselineLhCache.set(font, lh);
+        }
+        if (lh) span.style.lineHeight = String(lh);
+    } catch (e) {}
+}
+
+// Đặt màu nền che chữ cũ (color = null: tự lấy lại từ trang PDF). Dùng cho nút "Nền" trên ribbon.
+function setTextMaskBackground(index, span, color) {
+    const layer = document.getElementById('editor-text-layer');
+    if (!layer || !span || !span._item) return null;
+    const col = color || sampleTextColors(span._item).bg;
+    const key = `${editorPage}_${index}`;
+    if (!modifiedTexts.some(m => m.key === key)) savePositionAndText(span, span._item, index);
+    const m = modifiedTexts.find(t => t.key === key);
+    if (!m) return null;
+    m.bgColor = col;
+    m._seq = ++editorSeq;
+    if (!layer.querySelector(`.original-mask[data-index="${index}"]`)) {
+        maskOriginalPosition(index, span._item, pdfjsLib.Util.transform(editorViewport.transform, span._item.transform));
+    }
+    const mask = layer.querySelector(`.original-mask[data-index="${index}"]`);
+    if (mask) mask.style.setProperty('--mask-bg', col);
+    span.classList.add('modified');
+    recordHistory();
+    return col;
+}
+window.setTextMaskBackground = setTextMaskBackground;
+
 function maskOriginalPosition(index, originalItem, tx) {
     const textLayerDiv = document.getElementById('editor-text-layer');
     if (textLayerDiv.querySelector(`.original-mask[data-index="${index}"]`)) return;
@@ -3797,6 +3892,31 @@ function enableDragAndEdit(span, originalItem, index, tx) {
     });
 }
 
+// Màu chiếm nhiều nhất trong mảng điểm ảnh RGBA (gộp theo mức 5 bit mỗi kênh, rồi lấy trung bình của nhóm đông nhất)
+function dominantColorFromPixels(d) {
+    const bins = new Map();
+    for (let i = 0; i < d.length; i += 4) {
+        if (d[i + 3] < 128) continue;
+        const key = ((d[i] >> 3) << 10) | ((d[i + 1] >> 3) << 5) | (d[i + 2] >> 3);
+        const b = bins.get(key);
+        if (b) { b.n++; b.r += d[i]; b.g += d[i + 1]; b.b += d[i + 2]; }
+        else bins.set(key, { n: 1, r: d[i], g: d[i + 1], b: d[i + 2] });
+    }
+    let best = null;
+    bins.forEach(b => { if (!best || b.n > best.n) best = b; });
+    if (!best) return null;
+    const c = [best.r, best.g, best.b].map(v => Math.round(v / best.n));
+    if (c[0] >= 250 && c[1] >= 250 && c[2] >= 250) return '#ffffff';     // trắng giấy: tránh lệch #fefefe do nén ảnh
+    return '#' + c.map(v => v.toString(16).padStart(2, '0')).join('');
+}
+
+function dominantBackgroundColor(ctx, x, y, w, h, pad) {
+    const x0 = Math.max(0, Math.floor(x - pad)), y0 = Math.max(0, Math.floor(y - pad));
+    const x1 = Math.min(ctx.canvas.width, Math.ceil(x + w + pad)), y1 = Math.min(ctx.canvas.height, Math.ceil(y + h + pad));
+    if (x1 - x0 < 1 || y1 - y0 < 1) return null;
+    return dominantColorFromPixels(ctx.getImageData(x0, y0, x1 - x0, y1 - y0).data);
+}
+
 function sampleTextColors(originalItem) {
     const res = {
         color: '#000000',
@@ -3825,9 +3945,10 @@ function sampleTextColors(originalItem) {
             const hex = c => '#' + c.map(v => v.toString(16).padStart(2, '0')).join('');
             if (best && minL < 200) res.color = hex(best);
         }
-        const bx = Math.max(0, x0 - 3), by = Math.min(cv.height - 1, Math.max(0, y0 + Math.floor(h / 2)));
-        const bp = ctx.getImageData(bx, by, 1, 1).data;
-        res.bg = '#' + [ bp[0], bp[1], bp[2] ].map(v => v.toString(16).padStart(2, '0')).join('');
+        // Trước đây chỉ lấy 1 điểm ảnh bên trái chữ: hay trúng nét chữ bên cạnh nên ra nền xám.
+        // Giờ lấy màu xuất hiện nhiều nhất trong vùng chữ + viền quanh (nền chiếm đa số điểm ảnh).
+        const dom = dominantBackgroundColor(ctx, vx, vy - h, w, h, 4);
+        if (dom) res.bg = dom;
     } catch (e) {}
     return res;
 }
@@ -3843,7 +3964,7 @@ function savePositionAndText(span, originalItem, index) {
     const isBold = span.classList.contains('is-bold');
     const isItalic = span.classList.contains('is-italic');
   const prev = existingIndex !== -1 ? modifiedTexts[existingIndex] : null;
-  const fontKey = prev ? fontKeyOf(prev) : fontKeyOf({ fontFamily: span.style.fontFamily });
+  const fontKey = prev ? fontKeyOf(prev) : defaultFontKeyFor(span);
   // Di chuyển đơn thuần không được chuyển font/màu gốc sang font mặc định.
   // Nếu trước đó người dùng đã sửa font/màu thì tiếp tục giữ định dạng chỉnh sửa đó.
   const preserveOriginalFormatting = prev ? !!prev.preserveOriginalFormatting : true;
@@ -3896,7 +4017,7 @@ function makeEditable(span, originalItem, index, tx) {
     input.style.top = span.style.top;
     input.style.fontSize = span.style.fontSize;
     const _prevMod = modifiedTexts.find(m => m.key === `${editorPage}_${index}`);
-    let editFont = _prevMod && !_prevMod.preserveOriginalFormatting ? fontKeyOf(_prevMod) : fontKeyOf({ fontFamily: span.style.fontFamily });
+    let editFont = _prevMod && !_prevMod.preserveOriginalFormatting ? fontKeyOf(_prevMod) : defaultFontKeyFor(span);
     let fontWasChanged = !!(_prevMod && !_prevMod.preserveOriginalFormatting);
     const originalCssFont = span.style.fontFamily || fontCss(editFont);
     const fontSel = document.getElementById('editor-text-font');
@@ -4052,6 +4173,8 @@ function makeEditable(span, originalItem, index, tx) {
         span._ptSize = editSize;
         span.style.fontSize = `${editSize * editorScale}px`;
         span.style.top = `${baselineVp - editSize * editorScale}px`;
+        fixSpanBaseline(span);
+        hintOriginalFont(originalItem, editFont);
         const _sampled = (modifiedTexts.find(m => m.key === `${editorPage}_${index}`) || {}).color ? null : sampleTextColors(originalItem);
         span.classList.add('modified');
         maskOriginalPosition(index, originalItem, tx);
