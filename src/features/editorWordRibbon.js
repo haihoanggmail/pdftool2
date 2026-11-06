@@ -200,6 +200,14 @@ function buildRibbonHTML() {
                   <input type="color" id="editor-text-highlight" value="#fef08a" style="position:absolute; opacity:0; width:100%; height:100%; cursor:pointer;">
                 </div>
 
+                <!-- Nền che chữ cũ: chọn màu để vùng sửa không khác màu nền trang; ⟳ = tự lấy lại từ trang PDF -->
+                <div class="rb-color-btn-wrap" id="rb-maskbg-wrap" title="Màu nền che chữ cũ: chọn cùng màu với nền trang để vùng sửa không bị khác">
+                  <span style="font-size:12px; font-weight:700;">▧</span>
+                  <div class="rb-color-bar" id="rb-maskbg-bar" style="background:#ffffff; box-shadow:inset 0 0 0 1px #cbd5e1;"></div>
+                  <input type="color" id="editor-mask-bg" value="#ffffff" style="position:absolute; opacity:0; width:100%; height:100%; cursor:pointer;">
+                </div>
+                <button class="rb-btn-icon" id="rb-maskbg-auto" title="Tự lấy lại màu nền từ trang PDF cho chữ đang chọn">⟳</button>
+
                 <!-- Font Color Picker (Chữ A vạch đỏ) -->
                 <div class="rb-color-btn-wrap" id="rb-color-wrap" title="Màu chữ (Font Color)">
                   <span style="font-size:13px; font-weight:900;">A</span>
@@ -1026,6 +1034,18 @@ function wireRibbonEvents() {
     applyWordFormatting('highlight', hlInput?.value || '#fef08a');
   });
 
+  // Nền che chữ cũ
+  const mbInput = document.getElementById('editor-mask-bg');
+  const mbBar = document.getElementById('rb-maskbg-bar');
+  mbInput?.addEventListener('input', () => {
+    if (mbBar) mbBar.style.background = mbInput.value;
+    applyWordFormatting('maskBg', mbInput.value);
+  });
+  document.getElementById('rb-maskbg-auto')?.addEventListener('click', () => {
+    const c = applyWordFormatting('maskBgAuto');
+    if (c && mbInput) { mbInput.value = c; if (mbBar) mbBar.style.background = c; }
+  });
+
   // Color picker bar update
   const colInput = document.getElementById('editor-text-color');
   const colBar = document.getElementById('rb-color-bar');
@@ -1460,6 +1480,27 @@ function setupSpansForWordEditing() {
 export function applyWordFormatting(type, value) {
   const layer = document.getElementById('editor-text-layer');
   if (!layer) return;
+
+  // Nền che chữ cũ (áp cho chữ gốc đang sửa hoặc đang chọn)
+  if (type === 'maskBg' || type === 'maskBgAuto') {
+    const val = type === 'maskBg' ? value : null;
+    const inp = layer.querySelector('.editing-input');
+    let targets = [];
+    if (inp) {
+      const sp = layer.querySelector(`span[data-tidx="${inp.getAttribute('data-index')}"]`);
+      if (sp) targets = [sp];
+    } else {
+      targets = Array.from(layer.querySelectorAll('span[data-tidx].region-selected, span[data-tidx].word-selected'));
+      if (!targets.length && activeWordSpan) targets = [activeWordSpan];
+    }
+    let used = null;
+    targets.forEach(sp => {
+      const idx = parseInt(sp.getAttribute('data-tidx'), 10);
+      if (!isNaN(idx) && typeof window.setTextMaskBackground === 'function') used = window.setTextMaskBackground(idx, sp, val);
+    });
+    if (!targets.length && window.toast) window.toast('Hãy chọn (hoặc bấm vào) dòng chữ cần đổi nền che.', 'info', 2200);
+    return used;
+  }
 
   // 1. If user is currently typing in an inline input, apply directly to it
   const activeInput = layer.querySelector('.editing-input');
