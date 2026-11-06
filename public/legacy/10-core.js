@@ -2587,6 +2587,19 @@ function bindAddedTextEvents(span, id) {
     });
 }
 
+// Chốt mọi ô chữ đang gõ dở vào danh sách chỉnh sửa. Bấm nút Lưu trên ribbon KHÔNG làm ô nhập mất focus
+// theo kiểu "bấm ra ngoài" (isRibbonOrPicker bỏ qua) nên nếu không chốt, file xuất ra sẽ là nội dung cũ.
+function commitPendingTextEdits() {
+    const layer = document.getElementById('editor-text-layer');
+    if (!layer) return 0;
+    let n = 0;
+    layer.querySelectorAll('.editing-input').forEach(inp => {
+        try { if (typeof inp._commit === 'function') { inp._commit(); n++; } } catch (e) { console.error('Không chốt được ô chữ đang sửa:', e); }
+    });
+    return n;
+}
+window.commitPendingTextEdits = commitPendingTextEdits;
+
 function isRibbonOrPicker(el) {
     if (!el) return false;
     return !!(
@@ -2778,6 +2791,7 @@ function openAddedTextEditor(entry, pos) {
         buildAddedTexts(layer);
         if (typeof notifyEditorSelection === 'function') notifyEditorSelection();
     };
+    input._commit = commit;   // để commitPendingTextEdits() chốt chữ đang gõ dở trước khi lưu
     input.addEventListener('input', applySize);
     input.addEventListener('keydown', e => {
         if (e.key === 'Enter') { e.preventDefault(); commit(); return; }
@@ -4218,6 +4232,7 @@ function makeEditable(span, originalItem, index, tx) {
         recordHistory();
         if (typeof notifyEditorSelection === 'function') notifyEditorSelection();
     };
+    input._commit = saveChange;   // để commitPendingTextEdits() chốt chữ đang gõ dở trước khi lưu
     input.addEventListener('blur', e => {
         if (pickerBusy) return;
         const rt = e.relatedTarget || document.activeElement;
@@ -4295,6 +4310,7 @@ async function editorExportPDF(captureCb) {
         alert('Thư viện PDF chưa tải xong. Vui lòng tải lại trang hoặc kiểm tra kết nối mạng.');
         return;
     }
+    commitPendingTextEdits();   // lưu cả chữ đang gõ dở trước khi dựng PDF
     if (!captureCb) logAction("edit_pdf");
     const btn = document.getElementById('editor-download-btn');
     btn.textContent = 'Đang xử lý xuất PDF...';
