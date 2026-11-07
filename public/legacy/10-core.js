@@ -4313,6 +4313,7 @@ async function editorExportPDF(captureCb) {
     commitPendingTextEdits();   // lưu cả chữ đang gõ dở trước khi dựng PDF
     if (!captureCb) logAction("edit_pdf");
     const btn = document.getElementById('editor-download-btn');
+    const btnOrigHtml = btn ? btn.innerHTML : '';   // giữ biểu tượng + nhãn của nút để khôi phục sau khi xuất
     btn.textContent = 'Đang xử lý xuất PDF...';
     btn.disabled = true;
     try {
@@ -4502,6 +4503,7 @@ async function editorExportPDF(captureCb) {
         });
         if (editorSigs.length && typeof editorDrawSigsOnPdf === 'function') failedItems += await editorDrawSigsOnPdf(pdfDoc, pages);
         editorShapes.forEach(shape => {
+          try {   // một hình lỗi không làm hỏng cả lần xuất
             const pageObj = pages[shape.page - 1];
             if (!pageObj) { failedItems++; console.error('Không tìm thấy trang cho hình vẽ:', shape.page); return; }
             const rgb = hexToRgb(shape.color);
@@ -4598,6 +4600,7 @@ async function editorExportPDF(captureCb) {
                     });
                 }
             }
+          } catch (shapeErr) { failedItems++; console.error('Lỗi vẽ hình:', shapeErr); }
         });
         const modifiedPdfBytes = await pdfDoc.save();
         if (captureCb) { captureCb(modifiedPdfBytes); return; }
@@ -4618,7 +4621,7 @@ async function editorExportPDF(captureCb) {
         console.error(error);
         alert('Lỗi xuất file: ' + ((error && error.message) ? error.message : String(error)));
     } finally {
-        btn.textContent = '💾 XUẤT FILE ĐÃ SỬA';
+        if (btn) btn.innerHTML = btnOrigHtml;
         btn.disabled = false;
     }
 }
