@@ -2151,6 +2151,7 @@ async function editorLoadFile(input) {
     const reader = new FileReader;
     reader.onload = async function() {
         editorPdfDataBytes = this.result.slice(0);
+        editorSavedSig = null; editorDocOpsDirty = false;
         modifiedTexts = [];
         modifiedImages = [];
         editorShapes = [];
@@ -4301,6 +4302,37 @@ async function getUnicodeFontBytes(style = "regular") {
     }
 }
 
+// ===== Cảnh báo dữ liệu chưa lưu (trình Chỉnh sửa) =====
+// "Chưa lưu" = có chỉnh sửa (chữ/ảnh/hình/chữ ký) khác với lần xuất gần nhất, hoặc đã áp dụng thao tác cả tài liệu
+// (canh lề, xóa trang trắng, che thông tin...) mà chưa xuất file. Chỉ coi là đã lưu SAU KHI xuất thành công.
+let editorSavedSig = null;        // chữ ký các chỉnh sửa tại lần xuất thành công gần nhất (null = chưa xuất lần nào)
+let editorDocOpsDirty = false;    // đã áp dụng thao tác cả tài liệu nhưng chưa xuất
+const EDITOR_EMPTY_SIG = '[[],[],[],[],[]]';
+function editorEditsSig() {
+    const added = (typeof addedTexts !== 'undefined' && addedTexts) ? addedTexts : [];
+    try {
+        return JSON.stringify([modifiedTexts, modifiedImages, editorShapes, editorSigs, added], (k, v) => {
+            if (typeof v === 'function') return undefined;
+            if (v && typeof v === 'object') {
+                if (typeof Node !== 'undefined' && v instanceof Node) return undefined;
+                if (v instanceof ArrayBuffer || ArrayBuffer.isView(v)) return 'bin' + v.byteLength;
+            }
+            return v;
+        });
+    } catch (e) {
+        const n = [modifiedTexts.length, modifiedImages.length, editorShapes.length, editorSigs.length, added.length];
+        return n.every(x => x === 0) ? EDITOR_EMPTY_SIG : 'x' + n.join(',');
+    }
+}
+function editorIsDirty() {
+    if (!editorPdfDataBytes) return false;
+    return editorDocOpsDirty || editorEditsSig() !== (editorSavedSig === null ? EDITOR_EMPTY_SIG : editorSavedSig);
+}
+window.editorIsDirty = editorIsDirty;
+window.addEventListener('beforeunload', function (e) {
+    try { if (editorIsDirty()) { e.preventDefault(); e.returnValue = ''; return ''; } } catch (err) { /* không chặn người dùng nếu kiểm tra lỗi */ }
+});
+
 async function editorExportPDF(captureCb) {
     if (!editorPdfDataBytes) {
         alert('Vui lòng mở một file PDF trước khi xuất.');
@@ -4415,6 +4447,25 @@ async function editorExportPDF(captureCb) {
             }
             return out;
         };
+        // Gỡ hẳn chữ / ảnh gốc khỏi file (trước đây chỉ bị ô trắng che nên vẫn copy / tìm kiếm ra được)
+        let stripUnconfirmed = 0;   // số chữ/ảnh gốc KHÔNG xác nhận được là đã gỡ khỏi nội dung (chỉ bị che) -> báo cho người dùng
+        if (typeof window.stripOriginals === 'function' && (modifiedTexts.length || modifiedImages.length)) {
+            try {
+                const spec = { text: [], images: [] };
+                modifiedTexts.forEach(c => {
+                    const h = c.origHeight || c.fontSize || 12, pad = Math.max(2, h * 0.15);
+                    // vùng gỡ chữ luôn nằm TRONG ô trắng che bên dưới (x: origX-pad..origX+origWidth+pad, y: origY-0.28h..) nên không gỡ nhầm chữ còn nhìn thấy
+                    spec.text.push({ page: c.page, x0: c.origX - pad, x1: c.origX + (c.origWidth || 0) + pad, y0: c.origY - h * 0.28, y1: c.origY + h * 0.85 });
+                });
+                modifiedImages.forEach(im => {
+                    if (im.isCopy) return;
+                    spec.images.push({ page: im.page, x0: im.x0, y0: im.y0, x1: im.x0 + im.width, y1: im.y0 + im.height });
+                });
+                const sr = await window.stripOriginals(pdfDoc, spec);
+                if (sr && sr.unconfirmed) stripUnconfirmed = (sr.unconfirmed.text || 0) + (sr.unconfirmed.images || 0);
+                if (sr && (sr.text || sr.images)) console.info('Đã gỡ hẳn khỏi file: ' + sr.text + ' đoạn chữ, ' + sr.images + ' ảnh gốc');
+            } catch (e) { stripUnconfirmed = modifiedTexts.length + modifiedImages.filter(im => !im.isCopy).length; console.warn('Không gỡ hẳn được chữ / ảnh gốc, chỉ che bằng ô trắng:', e); }
+        }
         modifiedTexts.forEach(change => {
             try {
                 const pageObj = pages[change.page - 1];
@@ -4613,9 +4664,11 @@ async function editorExportPDF(captureCb) {
         link.download = finalFileName;
         link.click();
         setTimeout(() => URL.revokeObjectURL(link.href), 60000);
+        editorSavedSig = editorEditsSig(); editorDocOpsDirty = false;   // chỉ đánh dấu đã lưu khi xuất thành công
         const notes = [];
         if (unsupportedChars.size) notes.push('Các ký tự font không hỗ trợ đã được thay bằng "?": ' + Array.from(unsupportedChars).join(' '));
         if (failedItems) notes.push(failedItems + ' mục chữ không vẽ được (xem Console F12).');
+        if (stripUnconfirmed > 0) notes.push(stripUnconfirmed + ' đoạn chữ/ảnh gốc chưa gỡ được khỏi nội dung file (chỉ bị che bằng ô trắng, vẫn có thể sao chép/tìm kiếm được). Nếu cần bảo mật, hãy dùng công cụ "Che thông tin".');
         if (notes.length) setTimeout(() => alert('Đã xuất PDF, nhưng lưu ý:\n' + notes.join('\n')), 300);
     } catch (error) {
         console.error(error);
@@ -4849,6 +4902,7 @@ window.editorLoadBytes = async function(bytes, fileName, preservePage = false) {
     if (!bytes) return;
     const arrayBuffer = bytes.buffer ? bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) : bytes.slice(0);
     editorPdfDataBytes = arrayBuffer;
+    if (preservePage) editorDocOpsDirty = true; else { editorDocOpsDirty = false; editorSavedSig = null; }   // preservePage=true: thao tác cả tài liệu từ công cụ khác
     if (fileName) {
         editorFileName = fileName.replace(/\.pdf$/i, '');
     }

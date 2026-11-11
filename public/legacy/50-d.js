@@ -531,6 +531,9 @@ self.onmessage = async (ev) => {
             height: g.H
         };
 
+        // Margin Engine V2: khi đã xác định được vùng nội dung thật thì cho phép PHÓNG TO (lề nhỏ hơn lề cũ), tối đa 6 lần.
+        // Nếu không có vùng nội dung (coi cả trang là nội dung) thì chỉ thu nhỏ, tránh cắt mất lề trắng của chính trang.
+        const cap = (contentBox && o.trimWhitespace) ? 6.0 : 1.0;
         let targetW, targetH, s, scaledW, scaledH, dX, dY;
 
         if (mode === 'expand') {
@@ -547,7 +550,7 @@ self.onmessage = async (ev) => {
             targetH = isLand ? 595.28 : 841.89;
             const availW = Math.max(10, targetW - mL - mR);
             const availH = Math.max(10, targetH - mT - mB);
-            s = Math.min(availW / box.width, availH / box.height, 1.0);
+            s = Math.min(availW / box.width, availH / box.height, cap);
             scaledW = box.width * s;
             scaledH = box.height * s;
             dX = mL + (availW - scaledW) / 2;
@@ -560,7 +563,7 @@ self.onmessage = async (ev) => {
             targetH = g.H;
             const availW = Math.max(10, targetW - mL - mR);
             const availH = Math.max(10, targetH - mT - mB);
-            s = Math.min(availW / box.width, availH / box.height, 1.0);
+            s = Math.min(availW / box.width, availH / box.height, cap);
             scaledW = box.width * s;
             scaledH = box.height * s;
             dX = mL + (availW - scaledW) / 2;
@@ -688,6 +691,9 @@ self.onmessage = async (ev) => {
             return [{ name: baseName(it.name) + '_canh_le.pdf', data: bytes }];
         }
     };
+
+    // Engine canh lề dùng chung (tab Chuyển đổi, trình Chỉnh sửa, chuỗi 1-click)
+    window.PDFMarginEngine = { pageGeo, detectPageContentBox, applyPageMarginTransform };
 
     // ----- Loại bỏ trang trắng -----
     const BLANK_LEVEL = { strict: 0.000005, normal: 0.0001, loose: 0.0008 };
@@ -1340,7 +1346,7 @@ self.onmessage = async (ev) => {
         const out = await P().PDFDocument.create();
         let font = null, textOk = true;
         try { font = await getFontLib(out, false); } catch (e) { textOk = false; }
-        const { degrees } = P();
+        const L2 = P(), { degrees } = L2;
         let words = 0;
         for (let i = 1; i <= doc.numPages; i++) {
             prog(((i - 1) / doc.numPages) * 100, 'Đang nén trang ' + i + '/' + doc.numPages + '...');
@@ -1367,7 +1373,9 @@ self.onmessage = async (ev) => {
                         const m = pdfjsLib.Util.transform(v1.transform, t.transform);
                         const size = Math.hypot(m[2], m[3]);
                         if (!(size > 0.5)) continue;
-                        pg.drawText(txt, { x: m[4], y: v1.height - m[5], size, font, rotate: degrees(-Math.atan2(m[1], m[0]) * 180 / Math.PI), opacity: 0 });
+                        pg.pushOperators(L2.pushGraphicsState(), L2.setTextRenderingMode(L2.TextRenderingMode.Invisible));
+                        pg.drawText(txt, { x: m[4], y: v1.height - m[5], size, font, rotate: degrees(-Math.atan2(m[1], m[0]) * 180 / Math.PI) });
+                        pg.pushOperators(L2.popGraphicsState());
                         words++;
                     }
                 } catch (e) { /* trang không có lớp chữ */ }
@@ -1824,6 +1832,22 @@ self.onmessage = async (ev) => {
         tessLang = lang;
         return tessWorker;
     }
+    // ----- OCR: tự thử lại bằng chế độ "chữ rải rác" khi trang nền vân/giấy tờ có con dấu bị đọc kém -----
+    // Chế độ phân tích bố cục tự động (PSM 3) dễ hỏng ở ảnh 300 dpi có nền hoa văn + đường chấm; PSM 11 (sparse) đọc tốt hơn nhiều.
+    // Chỉ thay kết quả lượt 1 khi lượt 2 tốt hơn rõ rệt, nên trang văn bản bình thường không đổi gì.
+    const OCR_PSM_AUTO = '3', OCR_PSM_SPARSE = '11';
+    const OCR_RETRY_BELOW = 150;                       // lượt 1 có >= 150 từ tin cậy thì coi là đủ tốt, không thử lại
+    function ocrConfidentWords(res) {
+        let n = 0;
+        const blocks = (res && res.data && res.data.blocks) || [];
+        blocks.forEach(b => (b.paragraphs || []).forEach(pa => (pa.lines || []).forEach(ln => (ln.words || []).forEach(wd => {
+            if ((wd.confidence || 0) >= 70 && ((wd.text || '').trim().length >= 2)) n++;
+        }))));
+        return n;
+    }
+    function ocrNeedsRetry(n1) { return n1 < OCR_RETRY_BELOW; }
+    function ocrRetryIsBetter(n1, n2) { return n2 >= n1 * 1.3 && n2 - n1 >= 10; }
+
     TOOLS.ocr = {
         read() { return { lang: $('tl-ocr-lang').value, dpi: +$('tl-ocr-dpi').value, out: $('tl-ocr-out').value, pages: $('tl-ocr-pages').value, prep: $('tl-ocr-prep') ? $('tl-ocr-prep').value : 'auto' }; },
         async run(it, o) {
@@ -1833,6 +1857,7 @@ self.onmessage = async (ev) => {
             const wk = await Promise.race([ensureTesseract(o.lang), gate]);
             // giữ khoảng trắng giữa các từ + báo đúng độ phân giải để nhận dạng chữ nhỏ tốt hơn
             try { await wk.setParameters({ preserve_interword_spaces: '1', user_defined_dpi: String(o.dpi) }); } catch (e) {}
+            try { await wk.setParameters({ tessedit_pageseg_mode: OCR_PSM_AUTO }); } catch (e) {}
             const doc = await openPdfJs(it);
             const n = doc.numPages;
             let pages = parsePages(o.pages, n);
@@ -1861,6 +1886,23 @@ self.onmessage = async (ev) => {
                 } catch (e) {
                     if (PDFJob.isCancel(e)) { stopTesseract(); try { doc.destroy(); } catch (e2) {} cv.width = cv.height = 1; }
                     throw e;
+                }
+                // Lượt 2 (chỉ khi lượt 1 đọc được ít từ tin cậy): lỗi bất kỳ -> giữ nguyên kết quả lượt 1
+                try {
+                    const n1 = ocrConfidentWords(res);
+                    if (ocrNeedsRetry(n1)) {
+                        let res2 = null;
+                        try {
+                            await wk.setParameters({ tessedit_pageseg_mode: OCR_PSM_SPARSE });
+                            res2 = await Promise.race([wk.recognize(cv, {}, { text: true, blocks: true }), gate]);
+                        } finally {
+                            try { await wk.setParameters({ tessedit_pageseg_mode: OCR_PSM_AUTO }); } catch (e3) {}
+                        }
+                        if (res2 && ocrRetryIsBetter(n1, ocrConfidentWords(res2))) res = res2;
+                    }
+                } catch (e) {
+                    if (PDFJob.isCancel(e)) { stopTesseract(); try { doc.destroy(); } catch (e2) {} cv.width = cv.height = 1; throw e; }
+                    console.warn('OCR lượt 2 bị bỏ qua:', e);
                 }
                 cv.width = cv.height = 1;
                 texts.push('=== Trang ' + (pi + 1) + ' ===\n' + (res.data.text || '').trim());
@@ -2073,6 +2115,39 @@ self.onmessage = async (ev) => {
         if (it && it.id !== prevId) { prevId = it.id; updateToolPreview(); }
     });
 
+    // ---- Thanh menu danh sách file: gọn một dòng + trạng thái chọn; bấm để sổ danh sách ----
+    let listOpen = true, lastDoneCount = 0, prevTotal = 0;
+    function setListOpen(open) {
+        listOpen = !!open;
+        const box = $('tl-list'), bar = $('tl-listbar');
+        if (box) box.classList.toggle('tl-list-collapsed', !listOpen);
+        if (bar) { bar.setAttribute('aria-expanded', listOpen ? 'true' : 'false'); bar.classList.toggle('open', listOpen); }
+    }
+    function updateListBar(list) {
+        const el = $('tl-list-status'); if (!el) return;
+        const total = list.length, sel = list.filter(x => x.selected !== false).length;
+        const done = list.filter(x => x.outs && x.outs.length).length;
+        let t;
+        if (!total) t = 'Chưa có file';
+        else if (!sel) t = 'Chưa chọn file nào (0/' + total + ')';
+        else if (sel === total) t = 'Đang chọn tất cả ' + sel + '/' + total + ' file';
+        else t = 'Đang chọn ' + sel + '/' + total + ' file';
+        if (done) t += ' · ✅ ' + done + ' đã xong';
+        el.textContent = t;
+        el.classList.toggle('none', !total || !sel);
+        // vừa xử lý xong thêm file nào thì tự mở danh sách để người dùng thấy nút tải kết quả
+        if (done > lastDoneCount) setListOpen(true);
+        lastDoneCount = done;
+        // danh sách trống: mở sẵn để thấy hướng dẫn kéo thả; vừa có file đầu tiên: thu gọn để nhường chỗ cho khung xem trước
+        if (!total) setListOpen(true);
+        else if (prevTotal === 0) setListOpen(false);
+        prevTotal = total;
+    }
+    document.addEventListener('click', e => {
+        const bar = e.target.closest && e.target.closest('#tl-listbar');
+        if (bar) setListOpen(!listOpen);
+    });
+
     function render() {
         const list = curList(), kind = INFO[tool].accept;
         $('tl-list-title').textContent = kind === 'img' ? 'DANH SÁCH ẢNH' : 'DANH SÁCH FILE PDF';
@@ -2147,6 +2222,7 @@ self.onmessage = async (ev) => {
             box.innerHTML = chainBannerHtml + headerHtml + rowsHtml;
         }
 
+        updateListBar(list);
         updateToolPreview();
         const hasOut = lists.pdf.concat(lists.img).some(it => it.outs && it.outs.length);
         const selCount = list.filter(x => x.selected !== false).length;

@@ -173,6 +173,67 @@ def _page_images(page, doc, pr, lines, tbboxes, blobs, budget):
         cnt += 1
     return out
 
+class _GridTable:
+    def __init__(self, xs, ys):
+        self.bbox = (xs[0], ys[0], xs[-1], ys[-1])
+        self.cells = [(xs[i], ys[j], xs[i + 1], ys[j + 1]) for j in range(len(ys) - 1) for i in range(len(xs) - 1)]
+        self.row_count = len(ys) - 1
+        self.col_count = len(xs) - 1
+
+def _rule_segments(page):
+    hs, vs = [], []
+    try: drs = page.get_drawings()
+    except Exception: return hs, vs
+    for dr in drs:
+        stroked = 's' in (dr.get('type') or '')
+        for it in dr.get('items', []):
+            k = it[0]
+            if k == 'l':
+                a, b = it[1], it[2]
+                if abs(a.y - b.y) <= 1.0 and abs(a.x - b.x) > 4: hs.append(((a.y + b.y) / 2, min(a.x, b.x), max(a.x, b.x)))
+                elif abs(a.x - b.x) <= 1.0 and abs(a.y - b.y) > 4: vs.append(((a.x + b.x) / 2, min(a.y, b.y), max(a.y, b.y)))
+            elif k == 're':
+                r = it[1]
+                if r.height <= 2.5 and r.width > 4: hs.append(((r.y0 + r.y1) / 2, r.x0, r.x1))
+                elif r.width <= 2.5 and r.height > 4: vs.append(((r.x0 + r.x1) / 2, r.y0, r.y1))
+                elif stroked and r.width > 4 and r.height > 4:
+                    hs.append((r.y0, r.x0, r.x1)); hs.append((r.y1, r.x0, r.x1))
+                    vs.append((r.x0, r.y0, r.y1)); vs.append((r.x1, r.y0, r.y1))
+    return hs, vs
+
+def _rule_grids(page):
+    # Dựng lưới bảng trực tiếp từ các đường kẻ vector (dự phòng khi find_tables dò sai)
+    hs, vs = _rule_segments(page)
+    segs = [('h',) + h for h in hs] + [('v',) + v for v in vs]
+    if len(hs) < 2 or len(vs) < 2 or len(segs) > 700: return []
+    par = list(range(len(segs)))
+    def find(i):
+        while par[i] != i:
+            par[i] = par[par[i]]; i = par[i]
+        return i
+    for i in range(len(segs)):
+        if segs[i][0] != 'h': continue
+        _, y, x0, x1 = segs[i]
+        for j in range(len(segs)):
+            if segs[j][0] != 'v': continue
+            _, x, y0, y1 = segs[j]
+            if x0 - 2 <= x <= x1 + 2 and y0 - 2 <= y <= y1 + 2:
+                par[find(i)] = find(j)
+    comps = {}
+    for i in range(len(segs)): comps.setdefault(find(i), []).append(segs[i])
+    out = []
+    for comp in comps.values():
+        ch = [c for c in comp if c[0] == 'h']; cv = [c for c in comp if c[0] == 'v']
+        if len(ch) < 2 or len(cv) < 2: continue
+        xs = _cluster([c[1] for c in cv], 2.0)
+        ys = _cluster([c[1] for c in ch], 2.0)
+        if len(xs) < 2 or len(ys) < 2 or (len(xs) - 1) * (len(ys) - 1) < 2: continue
+        wd = xs[-1] - xs[0]
+        if wd < 30 or ys[-1] - ys[0] < 12: continue
+        if sum(1 for c in ch if (c[3] - c[2]) >= 0.6 * wd) < 2: continue
+        out.append(_GridTable(xs, ys))
+    return out
+
 def w2x_extract(opts_json):
     opts = json.loads(opts_json)
     doc = pymupdf.open('/w2x_in.pdf')
@@ -222,6 +283,15 @@ def w2x_extract(opts_json):
             for t in page.find_tables(strategy='lines').tables: tables.append((t, True))
         except Exception as ex_:
             warns.append('Trang %d: không dò được bảng có đường viền (%s)' % (pn + 1, str(ex_)[:90]))
+        try:
+            for g in _rule_grids(page):
+                gb = g.bbox; ga = max(1.0, (gb[2] - gb[0]) * (gb[3] - gb[1]))
+                cover = max([_inter(gb, tuple(o.bbox)) / ga for o, _ in tables] or [0])
+                if cover < 0.85:
+                    tables = [(o, bd) for o, bd in tables if _inter(gb, tuple(o.bbox)) / max(1.0, (o.bbox[2] - o.bbox[0]) * (o.bbox[3] - o.bbox[1])) < 0.3]
+                    tables.append((g, True))
+        except Exception as ex_:
+            warns.append('Trang %d: không dựng được lưới từ đường kẻ (%s)' % (pn + 1, str(ex_)[:90]))
         if opts.get('stream'):
             try:
                 for t in page.find_tables(strategy='text').tables:

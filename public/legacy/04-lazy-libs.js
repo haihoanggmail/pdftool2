@@ -28,17 +28,38 @@
         else throw new Error('Không tải được ' + url + ' (HTTP ' + x.status + ')');
     }
 
+    // Tải bất đồng bộ có timeout + thử lại (2 lần, chờ tăng dần) + thông báo khi thất bại hẳn.
+    const TIMEOUT_MS = 30000, RETRIES = 2;
+    function loadOnce(url) {
+        return new Promise(function (res, rej) {
+            const s = document.createElement('script');
+            let timer = setTimeout(function () { cleanup(); rej(new Error('Hết thời gian tải ' + url)); }, TIMEOUT_MS);
+            function cleanup() { clearTimeout(timer); s.onload = s.onerror = null; if (s.parentNode) s.parentNode.removeChild(s); }
+            s.src = url;
+            s.async = true;
+            s.onload = function () { clearTimeout(timer); s.onload = s.onerror = null; res(); };
+            s.onerror = function () { cleanup(); rej(new Error('Không tải được ' + url)); };
+            document.head.appendChild(s);
+        });
+    }
+    function notifyFail(url) {
+        const msg = 'Không tải được thư viện cần thiết (' + url.replace(/^.*\//, '') + '). Kiểm tra mạng rồi thử lại.';
+        try { if (global.toast) global.toast(msg, 'error', 6000); } catch (e) { }
+    }
     function asyncLoad(url) {
         if (done[url]) return Promise.resolve();
         if (promises[url]) return promises[url];
-        promises[url] = new Promise(function (res, rej) {
-            const s = document.createElement('script');
-            s.src = url;
-            s.async = true;
-            s.onload = function () { done[url] = true; res(); };
-            s.onerror = function () { delete promises[url]; rej(new Error('Không tải được ' + url)); };
-            document.head.appendChild(s);
-        });
+        promises[url] = (async function () {
+            let lastErr;
+            for (let a = 0; a <= RETRIES; a++) {
+                if (done[url]) return;                       // đã được nạp bằng đường khác trong lúc chờ
+                try { await loadOnce(url); done[url] = true; return; }
+                catch (e) { lastErr = e; if (a < RETRIES) await new Promise(function (r) { setTimeout(r, 800 * (a + 1)); }); }
+            }
+            delete promises[url];
+            notifyFail(url);
+            throw lastErr;
+        })();
         return promises[url];
     }
 
@@ -73,4 +94,12 @@
             asyncLoad(FONTKIT_URL).catch(function () { });
         }
     };
+    // Tải sẵn khi trình duyệt rảnh -> mã cũ đọc đồng bộ gần như luôn thấy dữ liệu đã có, không phải khóa giao diện.
+    function idlePrefetch() {
+        const run = function () { asyncLoad(FONTS_URL).catch(function () { }); asyncLoad(FONTKIT_URL).catch(function () { }); };
+        if (global.requestIdleCallback) global.requestIdleCallback(run, { timeout: 8000 }); else setTimeout(run, 3000);
+    }
+    if (typeof global.addEventListener === 'function') {
+        if (document.readyState === 'complete') idlePrefetch(); else global.addEventListener('load', idlePrefetch);
+    }
 })(window);
