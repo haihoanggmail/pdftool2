@@ -453,7 +453,7 @@ function buildRibbonHTML() {
 
             <div class="rb-column" style="margin-left:4px;">
               <select id="rb-mg-mode" class="rb-select" style="width:125px;" title="Chế độ canh lề">
-                <option value="scale">Co nội dung (Khổ A4)</option>
+                <option value="scale">Giữ khổ giấy (co/giãn nội dung)</option>
                 <option value="expand">Mở rộng khổ giấy</option>
               </select>
               <label style="font-size:11px;display:flex;align-items:center;gap:4px;cursor:pointer;">
@@ -780,14 +780,11 @@ function wireRibbonEvents() {
   document.querySelectorAll('.rb-btn-large[data-tool], .rb-btn-compact[data-tool]').forEach(btn => {
     btn.addEventListener('click', () => {
       const tool = btn.dataset.tool;
-      if (tool !== 'region' && btn.classList.contains('active')) {   // bấm lại nút đang chọn -> bỏ chọn
+      if (btn.classList.contains('active')) {   // bấm lại nút đang chọn -> bỏ chọn
         window.clearEditorTool?.();
         return;
       }
-      if (tool === 'region') {
-        const sideReg = document.getElementById('region-mode-btn');
-        if (sideReg) sideReg.click();
-      } else if (typeof window.setEditorTool === 'function') {
+      if (typeof window.setEditorTool === 'function') {
         window.setEditorTool(tool);
       }
       syncActiveToolRibbon(tool);
@@ -1913,88 +1910,57 @@ export async function editorDocUndo() {
 // ======================== TOOL ACTIONS ========================
 
 // 1. Áp dụng Canh lề (Margins)
+// Engine canh lề dùng chung (Margin Engine V2): xác định vùng nội dung thật của từng trang rồi co/giãn + dịch để lề đo ra đúng số nhập.
+// Cả nút "Canh lề" và chuỗi 1-click đều gọi hàm này.
+async function runMarginEngine(bytes, o, onProg) {
+  const E = window.PDFMarginEngine;
+  if (!E) throw new Error('Chưa nạp được bộ máy canh lề. Hãy tải lại trang (Ctrl+F5).');
+  const pdfDoc = await PDFLib.PDFDocument.load(bytes);
+  let jsDoc = null;
+  if (o.trim) { try { jsDoc = await pdfjsLib.getDocument({ data: new Uint8Array(bytes.slice(0)) }).promise; } catch (e) { jsDoc = null; } }
+  const pages = pdfDoc.getPages();
+  let noBox = 0;
+  try {
+    for (let i = 0; i < pages.length; i++) {
+      if (onProg) onProg(i + 1, pages.length);
+      const page = pages[i], g = E.pageGeo(page);
+      const swap = o.mirror && (i + 1) % 2 === 0;
+      const mL = swap ? o.right : o.left, mR = swap ? o.left : o.right;
+      let box = null;
+      if (jsDoc) box = await E.detectPageContentBox(jsDoc, i + 1, g);
+      if (o.trim && !box) noBox++;
+      E.applyPageMarginTransform(page, g, { mL, mR, mT: o.top, mB: o.bottom, mode: o.mode, align: 'center', trimWhitespace: !!o.trim }, box);
+      if (i % 5 === 4) await new Promise((r) => setTimeout(r, 0));
+    }
+  } finally { if (jsDoc) { try { jsDoc.destroy(); } catch (e) {} } }
+  return { bytes: await pdfDoc.save(), noBox, pages: pages.length };
+}
+
 export async function applyMarginToEditor() {
   const currentBytes = await getEditorBytesOrAlert();
   if (!currentBytes) return;
 
-  const leftMm = Math.max(0, parseFloat(document.getElementById('rb-mg-left')?.value) || 0);
-  const rightMm = Math.max(0, parseFloat(document.getElementById('rb-mg-right')?.value) || 0);
-  const topMm = Math.max(0, parseFloat(document.getElementById('rb-mg-top')?.value) || 0);
-  const bottomMm = Math.max(0, parseFloat(document.getElementById('rb-mg-bottom')?.value) || 0);
+  const mm = (id) => Math.max(0, parseFloat(document.getElementById(id)?.value) || 0);
+  const leftMm = mm('rb-mg-left'), rightMm = mm('rb-mg-right'), topMm = mm('rb-mg-top'), bottomMm = mm('rb-mg-bottom');
   const mode = document.getElementById('rb-mg-mode')?.value || 'scale';
   const mirror = !!document.getElementById('rb-mg-mirror')?.checked;
-
-  const leftPt = leftMm * 72 / 25.4;
-  const rightPt = rightMm * 72 / 25.4;
-  const topPt = topMm * 72 / 25.4;
-  const bottomPt = bottomMm * 72 / 25.4;
+  const trim = document.getElementById('rb-mg-trim-whitespace') ? !!document.getElementById('rb-mg-trim-whitespace').checked : true;
+  const pt = (v) => v * 72 / 25.4;
 
   pushDocUndoState(`Canh lề (${leftMm}-${rightMm}-${topMm}-${bottomMm}mm)`);
   if (window.Progress) window.Progress.show('Đang áp dụng canh lề trang...', null);
-
   try {
-    const pdfDoc = await PDFLib.PDFDocument.load(currentBytes);
-    const pages = pdfDoc.getPages();
-    const total = pages.length;
-
-    for (let i = 0; i < total; i++) {
-      if (window.Progress) window.Progress.show(`Đang canh lề trang ${i + 1}/${total}...`, ((i + 1) / total) * 90);
-      const page = pages[i];
-      const isEven = (i + 1) % 2 === 0;
-
-      let mL = leftPt, mR = rightPt, mT = topPt, mB = bottomPt;
-      if (mirror && isEven) {
-        mL = rightPt;
-        mR = leftPt;
-      }
-
-      const { width: W, height: H } = page.getSize();
-      const rot = page.getRotation().angle;
-
-      let availW = W - mL - mR;
-      let availH = H - mT - mB;
-      if (availW < 10) availW = 10;
-      if (availH < 10) availH = 10;
-
-      if (mode === 'expand') {
-        const newW = W + mL + mR;
-        const newH = H + mT + mB;
-        page.setSize(newW, newH);
-        page.translateContent(mL, mB);
-      } else {
-        // Co nội dung vừa khổ A4
-        const s = Math.min(availW / W, availH / H, 1);
-        const scaledW = W * s;
-        const scaledH = H * s;
-        const dX = mL + (availW - scaledW) / 2;
-        const dY = mB + (availH - scaledH) / 2;
-
-        page.scaleContent(s, s);
-
-        // Adjust for page rotation angle
-        let tx = dX, ty = dY;
-        if (rot === 90) {
-          tx = dY;
-          ty = -dX;
-        } else if (rot === 180) {
-          tx = -dX;
-          ty = -dY;
-        } else if (rot === 270) {
-          tx = -dY;
-          ty = dX;
-        }
-        page.translateContent(tx, ty);
-      }
-    }
-
-    const outBytes = await pdfDoc.save();
-    await window.editorLoadBytes(outBytes, window.getEditorFileName(), true);
+    const r = await runMarginEngine(currentBytes, { left: pt(leftMm), right: pt(rightMm), top: pt(topMm), bottom: pt(bottomMm), mode, mirror, trim },
+      (i, n) => { if (window.Progress) window.Progress.show(`Đang canh lề trang ${i}/${n}...`, (i / n) * 90); });
+    await window.editorLoadBytes(r.bytes, window.getEditorFileName(), true);
     if (window.toast) {
-      window.toast(`✓ Đã canh lề thành công: Trái ${leftMm}mm, Phải ${rightMm}mm, Trên ${topMm}mm, Dưới ${bottomMm}mm!`, 'success');
+      window.toast(`✓ Đã canh lề: Trái ${leftMm}mm, Phải ${rightMm}mm, Trên ${topMm}mm, Dưới ${bottomMm}mm (${r.pages} trang)`, 'success');
+      if (r.noBox) window.toast(`ℹ️ ${r.noBox} trang không xác định được vùng nội dung (trang trắng?) nên chỉ co theo cả trang.`, 'info', 6000);
     }
   } catch (err) {
     console.error('Lỗi canh lề:', err);
     if (window.toast) window.toast('Lỗi canh lề: ' + err.message, 'error');
+    try { docUndoStack.pop(); } catch (e) {}
   } finally {
     if (window.Progress) window.Progress.hide();
     updateRibbonDocState();
@@ -2354,35 +2320,9 @@ export async function applyPipelineToEditor() {
     // Bước 2: Canh lề chuẩn (30-15-20-20mm)
     if (doMargin) {
       if (window.Progress) window.Progress.show('Chuỗi 1-Click: Đang canh lề trang chuẩn...', 50);
-      const pdfDoc = await PDFLib.PDFDocument.load(bytes);
-      const leftPt = 30 * 72 / 25.4;
-      const rightPt = 15 * 72 / 25.4;
-      const topPt = 20 * 72 / 25.4;
-      const bottomPt = 20 * 72 / 25.4;
-
-      const pages = pdfDoc.getPages();
-      pages.forEach((page, i) => {
-        const isEven = (i + 1) % 2 === 0;
-        let mL = leftPt, mR = rightPt;
-        if (isEven) { mL = rightPt; mR = leftPt; }
-
-        const { width: W, height: H } = page.getSize();
-        let availW = W - mL - mR;
-        let availH = H - topPt - bottomPt;
-        if (availW < 10) availW = 10;
-        if (availH < 10) availH = 10;
-
-        const s = Math.min(availW / W, availH / H, 1);
-        const scaledW = W * s;
-        const scaledH = H * s;
-        const dX = mL + (availW - scaledW) / 2;
-        const dY = bottomPt + (availH - scaledH) / 2;
-
-        page.scaleContent(s, s);
-        page.translateContent(dX, dY);
-      });
-
-      bytes = await pdfDoc.save();
+      const mmPt = (v) => v * 72 / 25.4;
+      const mr = await runMarginEngine(bytes, { left: mmPt(30), right: mmPt(15), top: mmPt(20), bottom: mmPt(20), mode: 'scale', mirror: true, trim: true });
+      bytes = mr.bytes;
       appliedSteps.push('Canh lề 30-15-20-20mm ✅');
     }
 

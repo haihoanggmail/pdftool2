@@ -2,6 +2,7 @@
 // Các trang có vùng che được chuyển thành ảnh → dữ liệu bên dưới bị xóa thật, không chỉ bị đè khối đen.
 import '../styles/redact.css';
 import { $, addTab, toast, log, download } from './ui.js';
+import { scrubAfterRedaction, annotRefTags, verifyRedactedBytes } from './redactScrub.js';
 
 const st = { pdf: null, bytes: null, name: '', pages: 0, cur: 1, mode: 'width', scale: 96 / 72, rects: [], sel: null, token: 0 };
 // Quy ước zoom dùng chung (PDFZoom): 100% = kích thước thật; Vừa chiều rộng / Vừa trang tính theo khung hiện tại
@@ -200,6 +201,7 @@ async function findAll() {
 async function buildRedactedBytes(S, stripMeta, onProg) {
   const { PDFDocument } = window.PDFLib, pages = [...new Set(S.rects.map((r) => r.page))].sort((a, b) => a - b);
   const doc = await PDFDocument.load(S.bytes, { ignoreEncryption: true }); let done = 0;
+  const removedPages = [], removedAnnots = [];   // để dọn sạch dữ liệu gốc sau khi thay trang (xem redactScrub.js)
   for (const n of pages) {
     onProg?.(`Đang che trang ${n}...`, done / pages.length * 100);
     const page = await S.pdf.getPage(n), vp1 = page.getViewport({ scale: 1 }), SC = 2.5, vp = page.getViewport({ scale: SC });
@@ -209,12 +211,18 @@ async function buildRedactedBytes(S, stripMeta, onProg) {
     g.fillStyle = '#000'; S.rects.filter((r) => r.page === n).forEach((r) => g.fillRect(r.x * cv.width, r.y * cv.height, r.w * cv.width, r.h * cv.height));
     const blob = await new Promise((res) => cv.toBlob(res, 'image/jpeg', 0.92)); const img = await doc.embedJpg(new Uint8Array(await blob.arrayBuffer()));
     const np = doc.insertPage(n - 1, [vp1.width, vp1.height]); np.drawImage(img, { x: 0, y: 0, width: vp1.width, height: vp1.height });
-    doc.removePage(n);                                    // bỏ trang gốc (đã dời xuống vị trí n)
+    { const old = doc.getPage(n); removedPages.push(old.ref); removedAnnots.push(...annotRefTags(window.PDFLib, old)); }
+    doc.removePage(n);                                    // bỏ trang gốc (đã dời xuống vị trí n); dữ liệu gốc được dọn ở bước scrub bên dưới
     cv.width = cv.height = 1;
     done++;
   }
   if (stripMeta) { doc.setTitle(''); doc.setAuthor(''); doc.setSubject(''); doc.setKeywords([]); doc.setProducer(''); doc.setCreator(''); }
-  return { bytes: await doc.save(), pages: pages.length, count: S.rects.length };
+  // Gỡ sạch dữ liệu gốc (nội dung trang, giá trị ô biểu mẫu, XMP...) rồi kiểm tra lại file đã lưu.
+  // Nếu không xác nhận được thì HỦY xuất — không bao giờ giao ra file có thể còn rò rỉ.
+  const rep = scrubAfterRedaction(window.PDFLib, doc, { removedPages, removedAnnots, stripMeta });
+  const bytes = await doc.save();
+  if (!(await verifyRedactedBytes(window.PDFLib, bytes, removedPages))) throw new Error('Không xác nhận được dữ liệu gốc đã bị xóa khỏi file nên đã hủy xuất để tránh rò rỉ thông tin.');
+  return { bytes, pages: pages.length, count: S.rects.length, warnings: rep.warnings };
 }
 async function exportPdf(backToEditor) {
   if (!st.rects.length) return toast('Chưa có vùng che nào', 'error');
@@ -228,6 +236,7 @@ async function exportPdf(backToEditor) {
     } else {
       download(r.bytes, st.name + '-redacted.pdf'); toast(`Đã che ${r.count} vùng trên ${r.pages} trang`, 'success');
     }
+    (r.warnings || []).forEach((w) => toast(w, 'info', 6000));
   } catch (e) { toast('Lỗi xuất PDF: ' + (e.message || e), 'error'); } finally { window.Progress?.hide(); }
 }
 
