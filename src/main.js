@@ -8,6 +8,7 @@ import { initForm } from './features/form.js';
 import { initRedact } from './features/redact.js';
 import { initEditorWordRibbon } from './features/editorWordRibbon.js';
 import { initAuth } from './features/auth.js';
+import './features/stripOriginals.js';
 
 // Bảo mật: vá lỗ hổng CVE-2024-4367 trong pdfjs-dist bằng cách tắt hoàn toàn eval một cách an toàn
 (function patchPdfJsEvalSecurity() {
