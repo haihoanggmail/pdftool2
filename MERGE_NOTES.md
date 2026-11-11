@@ -1,4 +1,4 @@
-# Bản hợp nhất v8 (v7 + chọn vùng mới)
+# Bản hợp nhất v9 (v8 + gỡ hẳn chữ/ảnh gốc + dọn dẹp)
 
 Gốc chung của A và B là v6. Hợp nhất 3 chiều bằng `git merge-file`; chỉ 6 file có xung đột thật.
 
@@ -33,3 +33,10 @@ Gốc chung của A và B là v6. Hợp nhất 3 chiều bằng `git merge-file`
 - Phím tắt / menu chuột phải dùng chung vùng chọn (`window.editorRegion`): Delete, Ctrl+A, mũi tên nhích cả nhóm (chỉ ghi lịch sử một lần).
 - Test mới: `tests/region-selection.test.cjs`, `tests/region-behavior.test.cjs` (jsdom, thêm vào devDependencies).
 - Giữ nguyên từ v7: giải phóng pdf.js doc / object URL (sign, form, redact, ribbon, worker Word-Excel), cache `public/lib` trong service worker, gỡ các bản trùng trong `public/vendor`.
+
+## Thay đổi so với v8 (v9)
+- **Gỡ hẳn chữ / ảnh gốc khi sửa** (`src/features/stripOriginals.js`, gọi trong `editorExportPDF`): trước đây chỉ vẽ ô trắng đè lên, chữ cũ vẫn nằm trong file nên copy / tìm kiếm / trích xuất vẫn ra (kể cả thông tin đã xóa). Giờ lệnh hiện chữ (Tj / TJ / ' / ") và lệnh vẽ ảnh (Do) trong vùng bị sửa / xóa / di chuyển được gỡ khỏi nội dung trang; ảnh không còn dùng được bỏ khỏi file. Stream lạ, chữ trong Form XObject: giữ ô trắng như cũ. Test: `tests/strip-originals.test.mjs`.
+- Dọn: bỏ file thừa ở gốc (`Code.gs`, `copy-vendor.mjs`, `download`, `env.example` là bản sao của file đã có), bản trùng fflate / mozjpeg trong `public/vendor`, `public/legacy/70-f.js` không còn được nạp, nhánh `region` chết trong `editorWordRibbon.js`.
+- **OCR thử lại bằng chế độ chữ rải rác (PSM 11)** (từ bản `pdftool2-fixed`, `50-d.js` + `tests/ocr-fallback.test.cjs`): trang nền vân / giấy tờ có con dấu mà lượt 1 đọc kém (< 150 từ tin cậy) được đọc lại; chỉ nhận lượt 2 khi tốt hơn rõ rệt. Lỗi hoặc Hủy ở lượt 2 vẫn giữ kết quả lượt 1.
+- **PDF → Excel:** dựng lưới bảng từ đường kẻ vector khi `find_tables` của PyMuPDF dò lệch (bản PyMuPDF mới trả bảng sai ở file mẫu); chỉ thay khi bảng dò được phủ dưới 85% lưới thật.
+- **Nén "Siêu nén":** lớp chữ ẩn dùng chế độ hiển thị chữ vô hình thật (Tr 3) thay cho độ trong suốt 0, giống công cụ OCR; tìm kiếm / chọn chữ ổn định hơn ở các trình xem PDF.

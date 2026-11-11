@@ -1009,10 +1009,12 @@
                 </div>
             </div>
             <div class="right-panel" id="tl-drop">
-                <div class="preview-header">
-                    <span class="merge-preview-title" id="tl-list-title">DANH SÁCH FILE</span>
-                </div>
-                <div class="file-list" id="tl-list" style="margin-top:8px;"></div>
+                <button type="button" class="tl-listbar" id="tl-listbar" aria-expanded="false" aria-controls="tl-list" title="Bấm để mở/đóng danh sách file">
+                    <span class="tl-listbar-title merge-preview-title" id="tl-list-title">DANH SÁCH FILE</span>
+                    <span class="tl-listbar-status" id="tl-list-status">Chưa có file</span>
+                    <span class="tl-listbar-chev" aria-hidden="true">▾</span>
+                </button>
+                <div class="file-list tl-list-collapsed" id="tl-list" style="margin-top:8px;"></div>
                 <div id="tl-prev-card" style="display:none; flex-direction:column; height:400px; min-height:260px; margin-top:10px;">
                     <div class="preview-header" id="tl-prev-head">
                         <span class="merge-preview-title" id="tl-prev-title">XEM TRƯỚC</span>

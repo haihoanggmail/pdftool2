@@ -46,6 +46,8 @@ Sau khi thêm/sửa biến phải **Redeploy** thì mới có hiệu lực. Chư
 Chuyển dần `public/legacy/*` sang module trong `src/` (từng tab một), thêm tính năng mới: ký tên, điền form, che thông tin, so sánh nâng cao.
 
 ## Lịch sử thay đổi
+- **v10:** v9 + OCR thử lại PSM 11 (từ bản fixed) + lưới bảng dự phòng cho PDF → Excel + lớp chữ ẩn Tr 3 cho Siêu nén.
+- **v9:** bản v8 + gỡ hẳn chữ / ảnh gốc khỏi file khi sửa (không chỉ che trắng) + dọn file thừa.
 - **v8:** bản v7 + chọn vùng nhiều đối tượng viết lại (Pointer Events, chọn trọn khung, chữ gốc/chữ thêm/ảnh, kéo và nhích cả nhóm, Delete/Esc/Ctrl+A/menu chuột phải dùng chung vùng chọn), bỏ `70-f.js` và cơ chế chọn vùng cũ, thêm test hành vi bằng jsdom.
 - **v7:** hợp nhất hai nhánh A (tải trễ, Web Worker, a11y, SEO, service worker mới) và B (phân tích trang scan, bỏ chọn công cụ bằng Esc) với v6. Chi tiết xem `MERGE_NOTES.md`.
 
@@ -54,3 +56,5 @@ Chuyển dần `public/legacy/*` sang module trong `src/` (từng tab một), th
 - **Tab Chỉnh sửa:** nhóm "Công cụ nhanh" (Trang chủ), Che thông tin nhạy cảm (tự động / thủ công), bước Che và bước Nén trong Chuỗi liên hoàn, nút Nén PDF dùng chung bộ nén mới.
 - **Xem trước:** bộ xem trước nhiều trang dùng chung (Ctrl + cuộn, vừa ngang, nhiều trang vừa khung) cho Gộp, PDF Tools, Word, Excel; Ctrl + cuộn cho Đối chiếu và Che thông tin.
 - **PDF → Excel:** giữ hình ảnh (ảnh nhúng, logo vector, chữ ký, con dấu) đặt đúng vị trí; chế độ "Giống PDF gốc" (mỗi trang một ảnh).
+
+> **Bàn giao / kiểm toán bản v10:** xem [`HANDOVER.md`](./HANDOVER.md) (các lỗi đã sửa, giới hạn đã biết, danh sách thử tay trước khi phát hành).
