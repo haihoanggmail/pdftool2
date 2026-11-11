@@ -2078,13 +2078,28 @@ self.onmessage = async (ev) => {
 
     // ----- Xem trước nhiều trang cho file đang chọn (Ctrl + cuộn để phóng to / thu nhỏ) -----
     let prevViewer = null, prevDoc = null, prevId = null, prevTask = 0;
+    let listOpen = true, lastDoneCount = 0, prevTotal = 0;   // thanh menu danh sách file (xem setListOpen)
     async function updateToolPreview() {
         const card = $('tl-prev-card');
-        if (!card || !window.HViewer || typeof pdfjsLib === 'undefined') return;
-        if (INFO[tool].accept === 'img') { card.style.display = 'none'; return; }
-        const list = curList();
-        if (!list.length) { card.style.display = 'none'; if (prevViewer) prevViewer.clear(); prevId = null; return; }
+        if (!card) return;
+        const list = curList(), isImg = INFO[tool].accept === 'img';
+        // Khung xem trước chỉ hiện khi danh sách đã thu gọn (và có file) -> không còn khoảng trống vô nghĩa bên dưới thanh menu
+        if (!list.length || listOpen) { card.style.display = 'none'; return; }
         card.style.display = 'flex';
+        const areaPdf = $('tl-prev-area'), areaImg = $('tl-prev-img');
+        if (isImg) {
+            areaPdf.style.display = 'none'; areaImg.style.display = 'flex';
+            if (prevViewer) prevViewer.clear();
+            const it = list.find(x => x.id === prevId) || list[0];
+            prevId = it.id;
+            $('tl-prev-title').textContent = 'XEM TRƯỚC: ' + it.name;
+            $('tl-prev-page').textContent = (list.indexOf(it) + 1) + ' / ' + list.length;
+            areaImg.innerHTML = '';
+            if (it.url) { const im = document.createElement('img'); im.src = it.url; im.alt = it.name; im.style.cssText = 'max-width:100%; max-height:100%; object-fit:contain; background:#fff; box-shadow:0 2px 8px rgba(0,0,0,.25);'; areaImg.appendChild(im); }
+            return;
+        }
+        areaImg.style.display = 'none'; areaPdf.style.display = '';
+        if (!window.HViewer || typeof pdfjsLib === 'undefined') return;
         if (!prevViewer) {
             prevViewer = HViewer.create($('tl-prev-area'), {
                 emptyText: 'Bấm vào một file ở danh sách để xem trước.',
@@ -2116,12 +2131,12 @@ self.onmessage = async (ev) => {
     });
 
     // ---- Thanh menu danh sách file: gọn một dòng + trạng thái chọn; bấm để sổ danh sách ----
-    let listOpen = true, lastDoneCount = 0, prevTotal = 0;
     function setListOpen(open) {
         listOpen = !!open;
         const box = $('tl-list'), bar = $('tl-listbar');
         if (box) box.classList.toggle('tl-list-collapsed', !listOpen);
         if (bar) { bar.setAttribute('aria-expanded', listOpen ? 'true' : 'false'); bar.classList.toggle('open', listOpen); }
+        updateToolPreview();
     }
     function updateListBar(list) {
         const el = $('tl-list-status'); if (!el) return;
@@ -2143,6 +2158,10 @@ self.onmessage = async (ev) => {
         else if (prevTotal === 0) setListOpen(false);
         prevTotal = total;
     }
+    document.addEventListener('click', e => {
+        const pb = e.target.closest && e.target.closest('#tl-list [data-prev]');
+        if (pb) { const key = pb.getAttribute('data-prev'), it = curList().find(x => String(x.id) === key); if (it) prevId = it.id; setListOpen(false); return; }
+    });
     document.addEventListener('click', e => {
         const bar = e.target.closest && e.target.closest('#tl-listbar');
         if (bar) setListOpen(!listOpen);
@@ -2216,6 +2235,7 @@ self.onmessage = async (ev) => {
                     pw + (it.err ? '<div style="color:#c42b2b; font-size:12px; margin-top:2px;">⚠ ' + esc(it.err) + '</div>' : '') +
                     (it.note ? '<div style="color:#178a4c; font-size:12px; margin-top:2px;">✔ ' + esc(it.note) + '</div>' : '') +
                     (outs ? '<div style="margin-top:4px; display:flex; flex-wrap:wrap; align-items:center;">' + outs + '</div>' : '') + '</div>' + mv +
+                    '<button type="button" class="btn btn-small" data-prev="' + it.id + '" style="width:auto; padding:2px 8px; margin:0 0 0 4px; background:#0284c7; color:#fff;" title="Thu gọn danh sách và xem trước file này">👁 Xem trước</button>' +
                     '<button type="button" class="btn btn-danger" data-rm="' + it.id + '" style="width:auto; padding:2px 8px; margin:0 0 0 4px;" title="Bỏ khỏi danh sách">✕</button></div>';
             }).join('');
 
