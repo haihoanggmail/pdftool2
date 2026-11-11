@@ -2108,6 +2108,7 @@ export async function applyDeleteCurrentPageToEditor() {
     pdfDoc.removePage(curPage - 1);
     const outBytes = await pdfDoc.save();
     await window.editorLoadBytes(outBytes, window.getEditorFileName(), false);
+    window.editorMarkDocDirty?.();   // đã sửa tài liệu -> chưa lưu
     if (window.toast) window.toast(`✓ Đã xóa trang ${curPage} thành công!`, 'success');
   } catch (err) {
     console.error('Lỗi xóa trang:', err);
@@ -2135,6 +2136,7 @@ export async function applyAddBlankPageToEditor() {
 
     const outBytes = await pdfDoc.save();
     await window.editorLoadBytes(outBytes, window.getEditorFileName(), false);
+    window.editorMarkDocDirty?.();   // đã sửa tài liệu -> chưa lưu
     if (window.toast) window.toast(`✓ Đã thêm 1 trang trắng mới sau trang ${curPage}!`, 'success');
   } catch (err) {
     console.error('Lỗi thêm trang trắng:', err);

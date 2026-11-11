@@ -164,8 +164,24 @@ async function openPdf(file) {
   finally { window.Progress?.hide(); }
 }
 
+// pdf.js có thể đã bị hủy (đóng worker/giải phóng bộ nhớ) -> "Cannot read properties of null (reading 'sendWithPromise')".
+// Kiểm tra tài liệu còn dùng được, nếu không thì mở lại từ bytes gốc (không mất chữ ký đã đặt).
+async function ensurePdf() {
+  if (!st.bytes) return;
+  // Nhiều lần vẽ trang có thể chạy cùng lúc (đổi cỡ cửa sổ + đổi trang): dùng chung MỘT lần mở lại, tránh mở nhiều bản rồi bỏ rơi.
+  if (st.ensuring) return st.ensuring;
+  st.ensuring = (async () => {
+    let alive = false;
+    try { if (st.pdf) { await st.pdf.getPage(1); alive = true; } } catch (e) { alive = false; }
+    if (alive) return;
+    try { if (st.pdf) st.pdf.destroy(); } catch (e) {}
+    st.pdf = await window.pdfjsLib.getDocument({ data: st.bytes.slice(0), isEvalSupported: false }).promise;
+    st.pages = st.pdf.numPages;
+  })();
+  try { await st.ensuring; } finally { st.ensuring = null; }
+}
 async function renderPage() {
-  if (!st.pdf) return; const tk = ++st.token;
+  if (!st.pdf) return; await ensurePdf(); const tk = ++st.token;
   const page = await st.pdf.getPage(st.cur), stage = $('#sg-stage');
   const base = page.getViewport({ scale: 1 }), scale = calcScale(base, stage), vp = page.getViewport({ scale });
   st.scale = scale;
@@ -229,6 +245,7 @@ function duplicateAll() {
 async function buildSignedPdfBytes() {
   if (!st.pdf) throw new Error('Chưa có file PDF');
   if (!st.ph.length) throw new Error('Chưa đặt chữ ký nào lên trang');
+  await ensurePdf();
   const { PDFDocument, degrees } = window.PDFLib;
   window.Progress?.show('Đang tạo PDF đã ký...', 5);
   const doc = await PDFDocument.load(st.bytes, { ignoreEncryption: true }), emb = {};
