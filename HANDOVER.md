@@ -1,4 +1,4 @@
-# HACHIHI PDF Tool — Tài liệu bàn giao (bản v10 đã kiểm toán)
+# HACHIHI PDF Tool — Tài liệu bàn giao (bản v10.2.2 đã gộp và kiểm toán)
 
 Ngày kiểm toán: 11/11/2026 · Nền: `pdftool2-main-v10.zip` · Phạm vi: toàn bộ thay đổi của v10 + các bản sửa từ các phiên làm việc trước.
 
@@ -167,3 +167,52 @@ Khi dùng Redact cho tài liệu nhạy cảm: bật "Xóa siêu dữ liệu", �
 | **Thanh danh sách file** | Các công cụ ở tab Chuyển đổi/Công cụ PDF: khung "DANH SÁCH FILE" thu gọn thành một thanh có tiêu đề + trạng thái ("Đang chọn tất cả 5/5 file", "Đang chọn 2/5 file", "✅ n đã xong"); bấm để sổ danh sách. Danh sách trống thì mở sẵn (có hướng dẫn kéo thả), có file đầu tiên thì tự thu gọn, có kết quả mới thì tự mở để thấy nút tải. |
 
 Test mới: `margin-engine` (4 hướng xoay, lề 2/20/50 mm; thử với mã cũ thì thất bại), `unsaved-warning`. Chưa chạy trình duyệt thật cho thanh danh sách file — cần xem bằng mắt.
+
+Bổ sung v10.2.1 (thanh danh sách file): khung xem trước chỉ hiện khi danh sách đã thu gọn và lấp đầy phần còn lại (không còn khoảng trống). Mỗi dòng có nút "👁 Xem trước": bấm thì danh sách thu gọn và hiện bản xem trước của file đó (PDF dùng HViewer, ảnh hiển thị trực tiếp). Công cụ ảnh (Ảnh → PDF...) trước đây không có xem trước nay đã có.
+
+
+---
+
+## 13. Kiểm toán bản v10.2.1 (lần 3)
+
+Đã đọc toàn bộ thay đổi của v10.2.1 so với v10.1 và chạy lại toàn bộ test. Kết luận: **không có lỗi cú pháp, các bản sửa trước được giữ nguyên, nhưng có 1 lỗi thật và 2 điểm nhỏ** (đã sửa).
+
+| Mức | Phát hiện | Nguyên nhân | Sửa |
+|---|---|---|---|
+| **Trung bình** — mất dữ liệu không cảnh báo | **Xóa trang hiện tại** và **Thêm trang trống** xong rồi đóng tab: trình duyệt **không cảnh báo chưa lưu** | `editorLoadBytes(bytes, name, preservePage=false)` coi `false` là "vừa mở file mới" và xóa cờ chưa lưu; hai thao tác này nạp lại tài liệu đã sửa với `false` (để về trang 1) | Thêm `window.editorMarkDocDirty()` (10-core.js), gọi ngay sau hai lời gọi trong `editorWordRibbon.js` |
+| Thấp | Thanh danh sách file tự **đóng nhầm** khi đổi công cụ rồi quay lại (nút tải kết quả bị giấu) | Bộ đếm `lastDoneCount`/`prevTotal` dùng chung cho mọi công cụ | Bộ đếm theo từng công cụ (`barSt[tool]`) |
+| Thấp | Xóa hết file khỏi danh sách nhưng tài liệu xem trước vẫn bị giữ trong bộ nhớ | Nhánh thoát sớm mới của `updateToolPreview` không gọi `prevViewer.clear()` như bản cũ | Danh sách rỗng → `prevViewer.clear()`, `prevId = null` |
+
+Test mới (đều **thất bại trên v10.2.1 nguyên bản, đạt sau khi sửa**): `unsaved-docops`, `list-bar`.
+
+Đã kiểm tra, không có vấn đề:
+- `redactScrub.js` bản mới: xóa ô biểu mẫu tại chỗ, vô hiệu hóa mọi trang gốc đã bỏ rồi dọn mồ côi, `verifyRedactedBytes` kiểm tra cả trang gốc lẫn widget còn trỏ tới trang đã che. Test `redact-scrub` đạt (các test được rút gọn nhưng không bị nới lỏng).
+- Cảnh báo chưa lưu: tham số `preservePage` có thật; biến `editorSigs`, `addedTexts` tồn tại; trạng thái chỉ được coi là đã lưu sau khi xuất thành công.
+- Margin Engine V2: `contentBox`, `trimWhitespace` đúng phạm vi; ô `rb-mg-trim-whitespace` có trong ribbon; `PDFMarginEngine` được dùng bởi ribbon.
+- Tải thư viện: thử lại và hủy script lỗi đúng; gói phông ~2,2 MB (timeout 30 s cần ≥ 75 KB/s — đường truyền rất chậm sẽ thấy thông báo lỗi và có thể thử lại).
+
+Ghi nhận (không sửa, tùy bạn):
+- Tải sẵn phông + fontkit (~2,2 MB) khi trình duyệt rảnh sẽ tốn dữ liệu di động ở lần truy cập đầu (service worker sẽ cache nên chỉ một lần).
+- `tests/w2x-grid.test.py` không nằm trực tiếp trong `package.json` (được gọi qua `w2x-grid.test.cjs`) — đúng thiết kế.
+- Chưa chạy trình duyệt thật cho thanh danh sách file và cảnh báo chưa lưu; `region-behavior` và `edit-fidelity` cần `jsdom` (chạy `npm install && npm test`).
+
+---
+
+## 14. v10.2.2 — hai lỗi chữ ký
+- **Không kéo được chữ ký trong trình Chỉnh sửa:** khung chọn vùng (10-core.js, `beginRegionSelect`, nghe ở pha capture) coi chữ ký là "vùng trống", gọi `preventDefault/stopPropagation` nên trình kéo của `.editor-sig-box` không nhận được sự kiện (và hiện thông báo "Không có đối tượng nằm trọn trong khung"). Sửa: thoát sớm khi bấm vào `.editor-sig-box`.
+- **Tab Ký tên báo "Cannot read properties of null (reading 'sendWithPromise')" khi xuất:** tài liệu pdf.js (`st.pdf`) đã bị hủy nên `getPage` lỗi. Sửa (sign.js): `ensurePdf()` kiểm tra tài liệu còn dùng được, nếu không thì mở lại từ `st.bytes`; gọi trước khi vẽ trang và trước khi xuất. Chưa xác định được chính xác nơi nào hủy tài liệu; lỗi được chặn ở chỗ dùng.
+- Test: `sig-fixes` (có thử: bỏ dòng thoát sớm thì test báo lỗi).
+
+---
+
+## 15. Bản gộp cuối (v10.2.2 + kiểm toán)
+
+Bản này = **v10_2_2 của bạn** (sửa chữ ký) **+** các bản sửa của đợt kiểm toán (mục 13) **+** một bản sửa mới:
+
+| Mức | Phát hiện | Sửa |
+|---|---|---|
+| Thấp | `ensurePdf()` (sign.js): nếu nhiều lần vẽ trang chạy cùng lúc khi tài liệu pdf.js đã bị hủy thì **mở lại nhiều lần và bỏ rơi các bản cũ** (đã tái hiện: 3 lần gọi → mở 3 lần, rò 2 bản) | Dùng chung một lần mở lại qua `st.ensuring`; lỗi không làm kẹt lần sau. Test `sig-ensure-race` (thất bại trên bản cũ, đạt trên bản mới) |
+
+Danh sách test (chạy `npm test`): ngoài các test ở các mục trước còn có `sig-fixes`, `sig-ensure-race`, `unsaved-docops`, `list-bar`.
+
+**Trước khi giao khách — nhắc lại những gì CHƯA được kiểm chứng:** chạy trên trình duyệt thật (Chrome/Edge/Firefox, điện thoại); `region-behavior` và `edit-fidelity` (cần `jsdom`); `npm run build` sạch; nâng cấp PDF.js (hiện 3.x, đã có biện pháp giảm thiểu CVE-2024-4367 và test canh giữ). Xem mục 7 để có danh sách thử tay.
