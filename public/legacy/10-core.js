@@ -3392,6 +3392,8 @@ window.editorSetTextColor = editorSetTextColor;
     function beginRegionSelect(e) {
         if (e.button !== 0 || editorCurrentTool !== 'text' || e.pointerType === 'touch') return;
         if (e.target.closest && e.target.closest('.editing-input')) return;
+        // Chữ ký (và nút xóa/đổi cỡ của nó) có trình kéo thả riêng: không được coi là vùng trống, nếu không khung chọn nuốt mất sự kiện ở pha capture
+        if (e.target.closest && e.target.closest('.editor-sig-box')) return;
         const target = e.target.closest ? e.target.closest(OBJ) : null;
         if (target) {
             if (selected.has(target)) { beginGroupDrag(e, target); return; }
@@ -4329,6 +4331,9 @@ function editorIsDirty() {
     return editorDocOpsDirty || editorEditsSig() !== (editorSavedSig === null ? EDITOR_EMPTY_SIG : editorSavedSig);
 }
 window.editorIsDirty = editorIsDirty;
+// Thao tác làm đổi tài liệu (xóa trang, thêm trang trống...) nạp lại file với preservePage=false (về trang 1) nên editorLoadBytes
+// coi như "mở file mới" và xóa cờ chưa lưu -> phải đánh dấu lại ngay sau khi nạp.
+window.editorMarkDocDirty = function () { editorDocOpsDirty = true; };
 window.addEventListener('beforeunload', function (e) {
     try { if (editorIsDirty()) { e.preventDefault(); e.returnValue = ''; return ''; } } catch (err) { /* không chặn người dùng nếu kiểm tra lỗi */ }
 });

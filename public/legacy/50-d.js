@@ -2078,13 +2078,18 @@ self.onmessage = async (ev) => {
 
     // ----- Xem trước nhiều trang cho file đang chọn (Ctrl + cuộn để phóng to / thu nhỏ) -----
     let prevViewer = null, prevDoc = null, prevId = null, prevTask = 0;
-    let listOpen = true, lastDoneCount = 0, prevTotal = 0;   // thanh menu danh sách file (xem setListOpen)
+    let listOpen = true;   // thanh menu danh sách file (xem setListOpen)
+    const barSt = {};      // số file / số file đã xong CỦA TỪNG công cụ (đổi tab không làm đóng/mở nhầm danh sách)
     async function updateToolPreview() {
         const card = $('tl-prev-card');
         if (!card) return;
         const list = curList(), isImg = INFO[tool].accept === 'img';
         // Khung xem trước chỉ hiện khi danh sách đã thu gọn (và có file) -> không còn khoảng trống vô nghĩa bên dưới thanh menu
-        if (!list.length || listOpen) { card.style.display = 'none'; return; }
+        if (!list.length || listOpen) {
+            card.style.display = 'none';
+            if (!list.length) { if (prevViewer) prevViewer.clear(); prevId = null; }   // danh sách rỗng: giải phóng tài liệu xem trước
+            return;
+        }
         card.style.display = 'flex';
         const areaPdf = $('tl-prev-area'), areaImg = $('tl-prev-img');
         if (isImg) {
@@ -2150,13 +2155,14 @@ self.onmessage = async (ev) => {
         if (done) t += ' · ✅ ' + done + ' đã xong';
         el.textContent = t;
         el.classList.toggle('none', !total || !sel);
+        const st = barSt[tool] || (barSt[tool] = { done: 0, total: 0 });
         // vừa xử lý xong thêm file nào thì tự mở danh sách để người dùng thấy nút tải kết quả
-        if (done > lastDoneCount) setListOpen(true);
-        lastDoneCount = done;
+        if (done > st.done) setListOpen(true);
+        st.done = done;
         // danh sách trống: mở sẵn để thấy hướng dẫn kéo thả; vừa có file đầu tiên: thu gọn để nhường chỗ cho khung xem trước
         if (!total) setListOpen(true);
-        else if (prevTotal === 0) setListOpen(false);
-        prevTotal = total;
+        else if (st.total === 0) setListOpen(false);
+        st.total = total;
     }
     document.addEventListener('click', e => {
         const pb = e.target.closest && e.target.closest('#tl-list [data-prev]');
