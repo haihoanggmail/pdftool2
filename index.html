@@ -1060,7 +1060,6 @@
                 Phiên bản V020726, <b>🎉 Miễn phí 100% cho mọi người</b>, tính năng cao cấp được thiết kế riêng cho nội bộ, cần đăng nhập để sử dụng - Support: 09-1800-1944
             </p>
 
-			<!--
             <p style="font-size:13px;">
                 🔐 File PDF được xử lý ngay trên máy bạn, không tải lên máy chủ.
                 Ứng dụng ghi thống kê sử dụng: thao tác, tab đã mở, tên file, IP/khu vực gần đúng, trình duyệt (không có nội dung file).
@@ -1068,7 +1067,6 @@
                     <input type="checkbox" id="no-log-chk"> Không gửi thống kê
                 </label>
             </p>
-			-->
 
             <hr style="border:0;
                        border-top:1px solid #d2d0ce;
@@ -1155,7 +1153,7 @@
 
 
 <script src="vendor/pdf-lib.min.js"></script>
-<script src="vendor/pdf.min.js"></script>
+<script src="vendor/pdf.min.js?v=6.2.108"></script>
 <script>
 // Vá bảo mật CVE-2024-4367: Tắt hoàn toàn eval / Dynamic execution trong pdf.js một cách an toàn
 (function() {
@@ -1176,7 +1174,19 @@
               } else {
                 safeSrc = { data: src, isEvalSupported: false };
               }
-              return origGetDoc.apply(target, [safeSrc, ...args]);
+              // pdf.js >= 5 cần wasmUrl để giải mã JPEG2000 / JBIG2 / ICC: thiếu thì ảnh JPX hiện TRẮNG mà không báo lỗi. Bản cũ bỏ qua tham số này.
+              if (safeSrc && typeof safeSrc === 'object' && !safeSrc.wasmUrl) {
+                try { safeSrc.wasmUrl = new URL('vendor/pdfjs/6.2.108/wasm/', (document && document.baseURI) || location.href).href; } catch (e) {}
+              }
+              const task = origGetDoc.apply(target, [safeSrc, ...args]);
+              // pdf.js >= 5 bỏ PDFDocumentProxy.destroy(); mã cũ gọi .destroy() ở ~30 chỗ (nhiều chỗ không có try/catch) -> bổ sung lại.
+              // Đăng ký TRƯỚC khi trả task nên chạy trước mọi .then() của nơi gọi.
+              try {
+                if (task && task.promise && typeof task.promise.then === 'function') {
+                  task.promise.then((doc) => { if (doc && typeof doc.destroy !== 'function') { try { doc.destroy = () => task.destroy(); } catch (e) {} } }, () => {});
+                }
+              } catch (e) {}
+              return task;
             };
           }
           return Reflect.get(target, prop, receiver);

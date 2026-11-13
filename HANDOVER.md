@@ -1,4 +1,4 @@
-# HACHIHI PDF Tool — Tài liệu bàn giao (bản v10.2.2 đã gộp và kiểm toán)
+# HACHIHI PDF Tool — Tài liệu bàn giao (bản v10.3 — pdf.js 6 + kiểm thử trình duyệt thật)
 
 Ngày kiểm toán: 11/11/2026 · Nền: `pdftool2-main-v10.zip` · Phạm vi: toàn bộ thay đổi của v10 + các bản sửa từ các phiên làm việc trước.
 
@@ -216,3 +216,70 @@ Bản này = **v10_2_2 của bạn** (sửa chữ ký) **+** các bản sửa c�
 Danh sách test (chạy `npm test`): ngoài các test ở các mục trước còn có `sig-fixes`, `sig-ensure-race`, `unsaved-docops`, `list-bar`.
 
 **Trước khi giao khách — nhắc lại những gì CHƯA được kiểm chứng:** chạy trên trình duyệt thật (Chrome/Edge/Firefox, điện thoại); `region-behavior` và `edit-fidelity` (cần `jsdom`); `npm run build` sạch; nâng cấp PDF.js (hiện 3.x, đã có biện pháp giảm thiểu CVE-2024-4367 và test canh giữ). Xem mục 7 để có danh sách thử tay.
+
+---
+
+## 16. Bản v10.3 — nâng cấp PDF.js 6.2.108 và kiểm thử trên trình duyệt thật
+
+### 16.1 Những gì đã được kiểm chứng và bằng cách nào
+
+| Việc | Kết quả | Cách kiểm chứng |
+|---|---|---|
+| Nâng PDF.js 3.11.174 → **6.2.108** (đã vá CVE-2024-4367) | Đã áp dụng | So sánh hành vi 3.11 và 6.2 trên **Chromium thật** qua đúng các lệnh app gọi: viewport, ảnh vẽ ra, vị trí chữ, vị trí ảnh, ảnh JPEG2000 → trùng khớp (vẽ lệch tối đa 1/255) |
+| Sửa/lưu chữ ở tab Chỉnh sửa (gõ rồi bấm Lưu không blur) | Đạt trên pdf.js 3.11 và 6.2 | E2E trình duyệt; **bản gốc ban đầu thất bại** (file xuất vẫn là chữ cũ) |
+| Redact — không rò dữ liệu gốc | Đạt (file ASCII và file tiếng Việt phông nhúng, 1 và 2 trang) | E2E + đọc thô từng đối tượng + đếm **luồng chữ mồ côi**; **bản gốc rò** ở cả hai file |
+| Ký tên: vẽ, lưu, nhân bản mọi trang (kể cả trang xoay 90°), xuất | Đạt | E2E trình duyệt; **bản gốc thất bại** (xem 16.3) |
+| Bộ test đơn vị | 26/28 đạt (hai test cần `jsdom` chưa chạy được: `region-behavior`, `edit-fidelity`) | `node tests/<tên>` |
+
+Bộ kịch bản trình duyệt nằm ở `tests/e2e/run.mjs` — 13 kiểm tra: tải trang, tương thích pdf.js (JPEG2000, `destroy`, tiếng Việt), sửa-lưu, Redact ×2 file, ký tên.
+Trên bản gốc ban đầu bộ này đạt 7/12 (5 lỗi đúng các lỗi đã nêu), trên v10.3 đạt 13/13.
+
+### 16.2 Phát hiện khi nâng cấp pdf.js (và đã xử lý)
+
+| # | Phát hiện | Hậu quả nếu bỏ qua | Xử lý |
+|---|---|---|---|
+| 1 | pdf.js ≥ 5 **chỉ có dạng ESM** (`.mjs`), còn `10-core.js` cần biến toàn cục `pdfjsLib` ngay khi nạp script (dòng 43/54) | Thư viện không nạp được | Đóng gói bản `legacy` thành script thường (IIFE) bằng esbuild: `public/vendor/pdf.min.js`; worker `pdf.worker.min.js`. Dùng bản **legacy** để chạy được trên trình duyệt đời cũ hơn |
+| 2 | `PDFDocumentProxy.destroy()` **bị bỏ** (mã gọi ~30 chỗ, nhiều chỗ không có try/catch, ví dụ ngay sau khi OCR xong) | `TypeError` cuối OCR/thao tác | Lớp tương thích trong `index.html` + `src/main.js`: bổ sung `doc.destroy()` → `loadingTask.destroy()` |
+| 3 | pdf.js ≥ 5 cần **`wasmUrl`** để giải mã **JPEG2000 / JBIG2 / ICC** | **Ảnh JPEG2000 hiện TRẮNG, không báo lỗi** (file scan hay dùng định dạng này) | Chép wasm vào `public/vendor/pdfjs/6.2.108/wasm/`; lớp tương thích tự đặt `wasmUrl`. Đã kiểm chứng pixel trùng 3.11 |
+| 4 | `vercel.json` cache `/vendor/*` kiểu **`immutable` 1 năm**; thay file cùng URL ⇒ người dùng cũ kẹt bản cũ hoặc **lệch phiên bản pdf.js/worker** ("API 3.11 không khớp Worker 6.2") | PDF không mở được với một số người dùng | **Phiên bản nằm trong URL**: `pdf.min.js?v=6.2.108`, `pdf.worker.min.js?v=6.2.108`, thư mục `pdfjs/6.2.108/wasm/`; service worker tăng `pdftool-vendor-v2` |
+| 5 | `copy-vendor.mjs` (chạy ở `postinstall` và `build`) sẽ **ghi đè** lại pdf.js 3.11 từ `node_modules` | Mỗi lần build quay về bản cũ | Bỏ khỏi `copy-vendor`; thêm chốt chặn: sai phiên bản / thiếu wasm → **dừng build** |
+| 6 | Nhỏ: ở chế độ `ENABLE_FORMS` pdf.js 6 vẽ thêm viền ô tích | Thẩm mỹ (viền nằm dưới ô nhập HTML của tab Điền biểu mẫu) | Chưa xử lý, chấp nhận |
+| 7 | Nhỏ: `getTextContent` không còn trả mục chữ rỗng cho mỗi cuối dòng | Không ảnh hưởng (mọi nơi dùng đã bỏ qua mục rỗng) | Không cần |
+
+### 16.3 Lỗi thật của ứng dụng tìm ra nhờ chạy trình duyệt thật
+
+**Tab Ký tên không lưu được chữ ký vẽ tay sau khi đã mở PDF** (có từ bản gốc ban đầu).
+`sign.js` dùng cùng thuộc tính `st.mode` cho chế độ tạo chữ ký (`draw`/`img`) và chế độ phóng to (`width`/`page`/`zoom`/`actual`). Mở PDF đặt `st.mode='width'`, phóng to/cuộn chuột cũng ghi đè → nút "Lưu chữ ký này" kiểm tra `st.mode === 'draw'` thất bại và báo "Hãy vẽ hoặc chọn ảnh chữ ký trước". Sửa: tách `st.sigMode` (tạo chữ ký) và `st.mode` (phóng to). Test: `sign-mode` (thất bại trên mã cũ), E2E ký tên.
+
+### 16.4 Cách nâng cấp pdf.js lần sau (cần máy có mạng)
+
+```bash
+npm install pdfjs-dist@<phiên bản> --save-exact   # cập nhật package.json + package-lock.json
+npm run vendor:pdfjs                              # đóng gói lại, cập nhật mọi tham chiếu phiên bản (index.html, main.js, 10-core.js, sw.js, copy-vendor)
+npm test && npm run build && npm run test:e2e     # xem 16.5
+```
+Kết quả đóng gói **tái lập được** (tạo lại 6.2.108 cho file giống hệt từng byte). Cần Node ≥ 22.13 cho gói `pdfjs-dist` 6.
+
+> **Việc cần làm một lần trên máy có mạng:** `package.json` / `package-lock.json` vẫn khai báo `pdfjs-dist ^3.4.120` (chỉ còn dùng cho vài test, **không** được đưa vào app). Mình không cập nhật được `package-lock.json` khi không có mạng, và sửa `package.json` mà không sửa lock sẽ làm `npm ci` báo lỗi. Hãy chạy lệnh `npm install pdfjs-dist@6.2.108 --save-exact` ở trên để công cụ quét bảo mật (Dependabot / npm audit) không còn báo bản 3.x.
+
+### 16.5 Chạy kiểm thử trình duyệt thật (Chrome / Edge) trên máy bạn
+
+```bash
+npm ci && npm test            # kỳ vọng: toàn bộ đạt, gồm region-behavior và edit-fidelity (cần jsdom)
+npm run build
+npm i -D playwright && npx playwright install chromium   # một lần
+npm run test:e2e                                          # Chromium của Playwright
+E2E_CHANNEL=chrome npm run test:e2e                       # Google Chrome đã cài
+E2E_CHANNEL=msedge npm run test:e2e                       # Microsoft Edge đã cài
+```
+Kỳ vọng: `13/13 đạt`. Thêm `E2E_KEEP=1` để giữ lại file xuất (PDF đã sửa/che/ký) và mở xem bằng mắt.
+
+### 16.6 CHƯA được kiểm chứng (nói thẳng)
+
+- **`npm ci`, `npm run build` (Vite), `npm test` đầy đủ:** môi trường kiểm toán không có mạng. Thay thế: dựng bản chạy được bằng esbuild từ cùng mã nguồn để thử trong trình duyệt; test đơn vị chạy bằng thư viện dựng tạm. `region-behavior`, `edit-fidelity` (cần `jsdom`) chưa chạy.
+- **Trình duyệt:** chỉ Chromium headless (Playwright). **Chưa** thử Google Chrome/Edge bản chính thức, Firefox, Safari, điện thoại, trình duyệt trong Zalo.
+- **OCR, PDF→Word, PDF→Excel:** cần tải Tesseract.js (mô hình tiếng Việt) và Pyodide/PyMuPDF từ CDN nên **không chạy được offline**. Chỉ kiểm chứng gián tiếp: phần vẽ trang bằng pdf.js (dùng cho OCR) và `destroy()` đã được kiểm chứng. Logic dựng lưới bảng và quy tắc OCR thử lại được test bằng dữ liệu giả/số đo. **Cần thử tay** với file thật (hóa đơn, bảng tài chính, bằng quét).
+- **JBIG2 và ICC (qcms):** wasm đã kèm theo và cơ chế giống JPEG2000 (đã kiểm chứng), nhưng **chưa có file mẫu** để thử riêng.
+- **File lớn** (100/500 trang), bộ nhớ sau khi mở/đóng nhiều lần, thao tác hủy giữa chừng: chưa thử.
+- **Service worker** trên trình duyệt thật (cập nhật từ bản cũ lên bản mới): chỉ test bằng mô phỏng (`sw.test.cjs`). Nên thử: mở bản cũ → triển khai bản mới → tải lại → PDF vẫn mở được.
+- Chế độ offline cho ảnh JPEG2000/JBIG2: wasm chỉ được cache sau lần dùng đầu (không nằm trong danh sách tải sẵn).
