@@ -3,7 +3,8 @@ import '../styles/sign.css';
 
 const $ = (s, r = document) => r.querySelector(s);
 const STORE_KEY = 'pdftool-signatures';
-const st = { pdf: null, bytes: null, name: '', pages: 0, cur: 1, mode: 'width', scale: 96 / 72, ph: [], sigs: [], active: null, sel: null, token: 0, imgData: null };
+// mode = chế độ PHÓNG TO (width/page/actual/zoom); sigMode = chế độ TẠO CHỮ KÝ (draw/img). Trước đây dùng chung một thuộc tính nên mở PDF/phóng to làm hỏng nút "Lưu chữ ký".
+const st = { pdf: null, bytes: null, name: '', pages: 0, cur: 1, mode: 'width', sigMode: 'draw', scale: 96 / 72, ph: [], sigs: [], active: null, sel: null, token: 0, imgData: null };
 // Quy ước zoom dùng chung (PDFZoom): 100% = kích thước thật; Vừa chiều rộng / Vừa trang tính theo khung hiện tại
 const calcScale = (base, stage) => {
   const Z = window.PDFZoom, aw = stage.clientWidth - 32, ah = stage.clientHeight - 32;
@@ -120,9 +121,9 @@ function refreshImgPreview() {
 function setupSigMaker() {
   document.querySelectorAll('.sg-mode').forEach(b => b.onclick = () => {
     document.querySelectorAll('.sg-mode').forEach(x => x.classList.toggle('on', x === b));
-    $('#sg-draw').hidden = b.dataset.m !== 'draw'; $('#sg-img').hidden = b.dataset.m !== 'img'; st.mode = b.dataset.m;
+    $('#sg-draw').hidden = b.dataset.m !== 'draw'; $('#sg-img').hidden = b.dataset.m !== 'img'; st.sigMode = b.dataset.m;
   });
-  st.mode = 'draw'; setupDraw();
+  st.sigMode = 'draw'; setupDraw();
   $('#sg-pickimg').onclick = () => $('#sg-imgfile').click();
   $('#sg-imgfile').onchange = (e) => {
     const f = e.target.files[0]; if (!f) return; const img = new Image();
@@ -131,7 +132,7 @@ function setupSigMaker() {
   };
   $('#sg-rmbg').onchange = $('#sg-thr').oninput = refreshImgPreview;
   $('#sg-save').onclick = () => {
-    const src = st.mode === 'draw' ? $('#sg-canvas') : st.imgCanvas;
+    const src = st.sigMode === 'draw' ? $('#sg-canvas') : st.imgCanvas;
     if (!src) return window.toast?.('Hãy vẽ hoặc chọn ảnh chữ ký trước', 'error');
     const t = trimToDataUrl(src); if (!t) return window.toast?.('Chữ ký đang trống', 'error');
     const s = { id: 's' + Date.now(), url: t.url, ar: t.w / t.h }; st.sigs.unshift(s); st.active = s.id; saveSigs(); renderList();

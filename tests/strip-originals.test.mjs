@@ -4,7 +4,9 @@ import assert from 'node:assert/strict';
 import * as PDFLib from 'pdf-lib';
 import { stripOriginals, stripContent, tokenize } from '../src/features/stripOriginals.js';
 const require = createRequire(import.meta.url);
-const pdfjs = require('pdfjs-dist/legacy/build/pdf.js');
+// pdfjs-dist <= 4 có legacy/build/pdf.js (CommonJS); từ 5 trở đi chỉ có .mjs -> hỗ trợ cả hai để test không vỡ khi nâng cấp
+let pdfjs;
+try { pdfjs = require('pdfjs-dist/legacy/build/pdf.js'); } catch (e) { pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs'); }
 
 async function textOf(bytes) {
   const doc = await pdfjs.getDocument({ data: new Uint8Array(bytes), isEvalSupported: false }).promise;

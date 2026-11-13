@@ -30,7 +30,19 @@ import './features/stripOriginals.js';
                 } else {
                   safeSrc = { data: src, isEvalSupported: false };
                 }
-                return origGetDoc.apply(target, [safeSrc, ...args]);
+                // pdf.js >= 5 cần wasmUrl để giải mã JPEG2000 / JBIG2 / ICC: thiếu thì ảnh JPX hiện TRẮNG mà không báo lỗi. Bản cũ bỏ qua tham số này.
+                if (safeSrc && typeof safeSrc === 'object' && !safeSrc.wasmUrl) {
+                  try { safeSrc.wasmUrl = new URL('vendor/pdfjs/6.2.108/wasm/', (document && document.baseURI) || location.href).href; } catch (e) {}
+                }
+                const task = origGetDoc.apply(target, [safeSrc, ...args]);
+                // pdf.js >= 5 bỏ PDFDocumentProxy.destroy(); mã cũ gọi .destroy() ở ~30 chỗ (nhiều chỗ không có try/catch) -> bổ sung lại.
+                // Đăng ký TRƯỚC khi trả task nên chạy trước mọi .then() của nơi gọi.
+                try {
+                  if (task && task.promise && typeof task.promise.then === 'function') {
+                    task.promise.then((doc) => { if (doc && typeof doc.destroy !== 'function') { try { doc.destroy = () => task.destroy(); } catch (e) {} } }, () => {});
+                  }
+                } catch (e) {}
+                return task;
               };
             }
             return Reflect.get(target, prop, receiver);

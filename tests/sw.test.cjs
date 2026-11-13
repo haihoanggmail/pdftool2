@@ -26,15 +26,15 @@ const run=async(t,ev)=>{let p;listeners[t]({...ev,waitUntil:q=>p=q,respondWith:q
 let fail=0;const ok=(c,m)=>{if(!c){fail++;console.log('FAIL',m)}else console.log('ok  ',m)};
 (async()=>{
   await run('install',{});
-  const app=cacheOf('pdftool-app-b2'),ven=cacheOf('pdftool-vendor-v1');
+  const app=cacheOf('pdftool-app-b2'),ven=cacheOf('pdftool-vendor-v2');
   ok(app.has(origin+'/legacy/10-core.js')&&app.has(origin+'/legacy/pdf-ops.worker.js')&&app.has(origin+'/legacy/94-i18n-v2.js'),'precache có legacy/*.js + worker + gói dịch');
   ok(app.has(origin+'/assets/index-ABC123.js')&&app.has(origin+'/assets/index-DEF456.css'),'tự phát hiện bundle build có hash từ index.html');
   ok(app.has(origin+'/assets/sign-XYZ789.js')&&app.has(origin+'/assets/redact-QQQ111.js'),'tự phát hiện chunk import động');
-  ok(ven.has(origin+'/vendor/pdf-lib.min.js')&&ven.has(origin+'/vendor/pdf.worker.min.js'),'vendor lõi nằm trong bộ nhớ vendor riêng');
+  ok(ven.has(origin+'/vendor/pdf-lib.min.js')&&ven.has(origin+'/vendor/pdf.worker.min.js?v=6.2.108'),'vendor lõi nằm trong bộ nhớ vendor riêng');
   // ra bản mới: bộ nhớ app cũ bị xóa, vendor giữ nguyên và KHÔNG tải lại
   stores['pdftool-app-OLD']=new Map([['x',1]]);stores['pdftool-v7']=new Map([['y',1]]);
   await run('activate',{});
-  ok(!('pdftool-app-OLD' in stores)&&!('pdftool-v7' in stores)&&('pdftool-vendor-v1' in stores)&&('pdftool-app-b2' in stores),'activate: xóa bản cũ, giữ vendor + bản hiện tại');
+  ok(!('pdftool-app-OLD' in stores)&&!('pdftool-v7' in stores)&&('pdftool-vendor-v2' in stores)&&('pdftool-app-b2' in stores),'activate: xóa bản cũ, giữ vendor + bản hiện tại');
   hits.length=0; await run('install',{});
   ok(!hits.some(u=>u.includes('/vendor/')),'cài lại: không tải lại vendor đã có');
   // fetch: vendor cache-first => không gọi mạng
