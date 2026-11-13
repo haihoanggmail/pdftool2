@@ -52,7 +52,7 @@ if (missingLibs.length) {
 }
 
 if (typeof pdfjsLib !== 'undefined') {
-    pdfjsLib.GlobalWorkerOptions.workerSrc = 'vendor/pdf.worker.min.js';
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'vendor/pdf.worker.min.js?v=6.2.108';
 }
 
 function applyTheme(theme) {

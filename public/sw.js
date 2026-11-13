@@ -9,7 +9,7 @@
 // __BUILD__ được thay bằng mã bản dựng mỗi lần `npm run build` (xem vite.config.js) -> mỗi bản mới là một phiên bản bộ nhớ mới.
 const BUILD = '__BUILD__';
 const APP_CACHE = 'pdftool-app-' + BUILD;
-const VENDOR_CACHE = 'pdftool-vendor-v1';      // tăng số này khi đổi nội dung file trong /vendor hoặc /lib
+const VENDOR_CACHE = 'pdftool-vendor-v2';      // tăng số này khi đổi nội dung file trong /vendor hoặc /lib
 
 // Luôn tải sẵn (nhỏ, cần để mở được app khi offline)
 const CORE = [
@@ -21,7 +21,7 @@ const CORE = [
   './legacy/90-i18n-a.js', './legacy/91-i18n-b.js', './legacy/92-i18n-ribbon.js', './legacy/93-i18n-ui.js', './legacy/94-i18n-v2.js'
 ];
 // Tải sẵn vào bộ nhớ riêng (không đổi theo bản dựng)
-const VENDOR_CORE = ['./vendor/pdf-lib.min.js', './vendor/pdf.min.js', './vendor/pdf.worker.min.js'];
+const VENDOR_CORE = ['./vendor/pdf-lib.min.js', './vendor/pdf.min.js?v=6.2.108', './vendor/pdf.worker.min.js?v=6.2.108'];
 
 const isVendorLike = (p) => /\/(vendor|lib|assets|fonts)\//.test(p);   // lib = fflate / mozjpeg (bộ nén PDF), không đổi theo bản dựng
 
